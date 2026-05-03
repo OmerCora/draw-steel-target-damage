@@ -5,6 +5,8 @@
   "DSTD.Settings.HideSystemButtons.Hint": "When enabled, hides the Draw Steel system's built-in chat damage/effect buttons and roll details so only the per-target panel from this module is shown.",
   "DSTD.Settings.AoeTargeting.Name": "AOE Targeting",
   "DSTD.Settings.AoeTargeting.Hint": "When enabled, Draw Steel ability regions automatically target tokens in the placed area using the ability target type and token dispositions.",
+  "DSTD.Settings.OverrideAbilityRegionVisibility.Name": "Override Ability Region Visibility",
+  "DSTD.Settings.OverrideAbilityRegionVisibility.Hint": "When enabled, Draw Steel ability template regions are created with Always for Anyone visibility instead of Always for Observers.",
   "DSTD.Settings.Roles.Player": "Player",
   "DSTD.Settings.Roles.Trusted": "Trusted Player",
   "DSTD.Settings.Roles.Assistant": "Assistant Director",

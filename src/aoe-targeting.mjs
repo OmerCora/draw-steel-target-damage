@@ -1,11 +1,18 @@
 import { FLAG_STATE, MODULE_ID } from "./config.mjs";
-import { isAoeTargetingEnabled } from "./settings.mjs";
+import { isAbilityRegionVisibilityOverrideEnabled, isAoeTargetingEnabled } from "./settings.mjs";
 import { hasModuleState, mutateMessageState } from "./state.mjs";
 import { getAbilityUuid, normalizeTargetToken } from "./target-utils.mjs";
 
 const DRAW_STEEL_SCOPE = "draw-steel";
 
 export function initializeAoeTargeting() {
+  Hooks.on("preCreateRegion", (region) => {
+    if (!isAbilityRegionVisibilityOverrideEnabled()) return;
+    if (!getAbilitySource(region)) return;
+
+    region.updateSource({ visibility: CONST.REGION_VISIBILITY.ALWAYS });
+  });
+
   Hooks.on("createRegion", (region, _options, userId) => {
     if (userId !== game.user.id) return;
     if (!isAoeTargetingEnabled()) return;
@@ -16,8 +23,7 @@ export function initializeAoeTargeting() {
 }
 
 async function handleCreatedRegion(region) {
-  const abilityUuid = region.getFlag?.(DRAW_STEEL_SCOPE, "abilitySource")
-    ?? foundry.utils.getProperty(region, `flags.${DRAW_STEEL_SCOPE}.abilitySource`);
+  const abilityUuid = getAbilitySource(region);
   if (!abilityUuid) return;
 
   const ability = await fromUuid(abilityUuid);
@@ -32,6 +38,12 @@ async function handleCreatedRegion(region) {
 
   await setUserTargets(targetTokens);
   await updateLatestMessageTargets(ability.uuid, targetTokens);
+}
+
+function getAbilitySource(region) {
+  return region.getFlag?.(DRAW_STEEL_SCOPE, "abilitySource")
+    ?? foundry.utils.getProperty(region, `flags.${DRAW_STEEL_SCOPE}.abilitySource`)
+    ?? foundry.utils.getProperty(region._source, `flags.${DRAW_STEEL_SCOPE}.abilitySource`);
 }
 
 function getTargetCriteria(ability) {

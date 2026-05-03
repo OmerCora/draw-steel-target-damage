@@ -72,6 +72,7 @@ In example: If an ability target contains "Allies", Hostile tokens only target o
 - **Apply Damage/Status Condition Permission:** Minimum role allowed to apply or undo damage and status buttons. Defaults to Director. Non-Director users are still limited to source actors or tokens they own.
 - **Hide System Roll & Damage Buttons:** Hides the system's duplicate controls on managed chat cards. Defaults on.
 - **AOE Targeting:** Automatically updates the latest matching ability card when Draw Steel places an area region. Defaults on.
+- **Override Ability Region Visibility:** Creates Draw Steel ability template regions with Always for Anyone visibility instead of Always for Observers. Defaults on.
 
 ## Installation
 

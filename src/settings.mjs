@@ -4,6 +4,7 @@ export const SETTINGS = {
   applyPermission: "applyPermission",
   hideSystemButtons: "hideSystemButtons",
   aoeTargeting: "aoeTargeting",
+  overrideAbilityRegionVisibility: "overrideAbilityRegionVisibility",
 };
 
 const HIDE_SYSTEM_BODY_CLASS = `${MODULE_ID}-hide-system`;
@@ -43,6 +44,16 @@ export function registerSettings() {
     type: Boolean,
     default: true,
   });
+
+  game.settings.register(MODULE_ID, SETTINGS.overrideAbilityRegionVisibility, {
+    name: "DSTD.Settings.OverrideAbilityRegionVisibility.Name",
+    hint: "DSTD.Settings.OverrideAbilityRegionVisibility.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+    requiresReload: false,
+  });
 }
 
 export function getApplyPermissionRole() {
@@ -66,6 +77,14 @@ export function isAoeTargetingEnabled() {
     return !!game.settings.get(MODULE_ID, SETTINGS.aoeTargeting);
   } catch (_) {
     return true;
+  }
+}
+
+export function isAbilityRegionVisibilityOverrideEnabled() {
+  try {
+    return !!game.settings.get(MODULE_ID, SETTINGS.overrideAbilityRegionVisibility);
+  } catch (_) {
+    return false;
   }
 }
 
