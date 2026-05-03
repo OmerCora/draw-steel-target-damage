@@ -55,7 +55,7 @@ jobs:
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "https://foundryvtt.com/_api/packages/release_version/" \
             -H "Content-Type: application/json" \
-            -H "Authorization: ${{ secrets.FOUNDRY_RELEASE_TOKEN }}" \
+            -H "Authorization: APIKey ${{ secrets.FOUNDRY_RELEASE_TOKEN }}" \
             -d '{
               "id": "${{ env.MODULE_ID }}",
               "release": {
