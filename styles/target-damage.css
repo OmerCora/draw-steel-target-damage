@@ -1,0 +1,450 @@
+/* ===== draw-steel-target-damage panel ===== */
+
+.draw-steel-target-damage-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.08);
+}
+
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) .draw-steel-target-damage-panel {
+  margin-top: -10px;
+}
+
+/* ----- Header ----- */
+.draw-steel-target-damage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.draw-steel-target-damage-header-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.draw-steel-target-damage-header-text strong {
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+
+.draw-steel-target-damage-header-text span {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  opacity: 0.75;
+}
+
+/* ----- Buttons (shared base) ----- */
+.draw-steel-target-damage-icon-button,
+.draw-steel-target-damage-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 4px;
+  color: inherit;
+  background: rgba(128, 128, 128, 0.12);
+  cursor: pointer;
+  font-size: 0.75rem;
+  line-height: 1.1;
+}
+
+.draw-steel-target-damage-icon-button:hover:not(:disabled),
+.draw-steel-target-damage-action-button:hover:not(:disabled) {
+  background: rgba(128, 128, 128, 0.22);
+}
+
+.draw-steel-target-damage-icon-button:disabled,
+.draw-steel-target-damage-action-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.draw-steel-target-damage-update-targets {
+  flex-shrink: 0;
+}
+
+/* ----- Target list ----- */
+.draw-steel-target-damage-target-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.draw-steel-target-damage-target-row {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 2px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.045);
+  overflow: hidden;
+}
+
+.draw-steel-target-damage-target-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 6px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  cursor: pointer;
+  user-select: none;
+}
+
+.draw-steel-target-damage-target-head:hover {
+  background: rgba(128, 128, 128, 0.08);
+}
+
+.draw-steel-target-damage-target-toggle {
+  font-size: 0.65rem;
+  opacity: 0.65;
+  transition: transform 160ms ease;
+}
+
+.draw-steel-target-damage-target-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 800px;
+  padding: 6px;
+  overflow: hidden;
+  opacity: 1;
+  transition: max-height 180ms ease, opacity 160ms ease, padding 180ms ease;
+}
+
+.draw-steel-target-damage-target-row.is-collapsed .draw-steel-target-damage-target-body {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+}
+
+.draw-steel-target-damage-target-row.is-collapsed .draw-steel-target-damage-target-toggle {
+  transform: rotate(-90deg);
+}
+
+.draw-steel-target-damage-portrait {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.draw-steel-target-damage-target-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* ----- Per-target ability roll display ----- */
+.draw-steel-target-damage-roll-display {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.draw-steel-target-damage-tier-row {
+  display: flex;
+  align-items: center;
+}
+
+.draw-steel-target-damage-tier-line {
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.draw-steel-target-damage-roll-line {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  cursor: help;
+}
+
+.draw-steel-target-damage-roll-box {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 26px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.10);
+  font-size: 0.78rem;
+}
+
+.draw-steel-target-damage-roll-display.is-critical .draw-steel-target-damage-roll-box {
+  border-color: color-mix(in srgb, currentColor 34%, rgba(255, 193, 7, 0.65));
+  background: rgba(255, 193, 7, 0.12);
+}
+
+.draw-steel-target-damage-roll-formula {
+  flex: 1;
+  padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-monospace, monospace);
+  opacity: 0.9;
+}
+
+.draw-steel-target-damage-roll-total {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  padding: 2px 8px;
+  border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  font-weight: 700;
+}
+
+.draw-steel-target-damage-tier-result {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  font-size: calc(0.78rem + 2pt);
+  opacity: 0.9;
+}
+
+.draw-steel-target-damage-tier-glyph {
+  margin: 0;
+  font-family: "Draw Steel Glyphs", inherit;
+  font-size: calc(1.15rem + 2pt);
+  line-height: 1;
+}
+
+body.draw-steel-target-damage-draw-steel-plus .draw-steel-target-damage-tier-glyph {
+  font-size: calc(1.15rem + 4pt) !important;
+}
+
+.draw-steel-target-damage-tier-glyph p {
+  margin: 0;
+}
+
+.draw-steel-target-damage-tier-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.draw-steel-target-damage-tier-text p {
+  margin: 0 0 2px;
+}
+
+.draw-steel-target-damage-tier-text p:last-child {
+  margin-bottom: 0;
+}
+
+.draw-steel-target-damage-roll-empty {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+/* ----- Action rows (one row per damage/status) ----- */
+.draw-steel-target-damage-target-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.draw-steel-target-damage-action-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.draw-steel-target-damage-stretch-button {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-start;
+  text-align: left;
+  overflow: hidden;
+}
+
+.draw-steel-target-damage-stretch-button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draw-steel-target-damage-cog-button,
+.draw-steel-target-damage-undo-button {
+  position: relative;
+  flex: 0 0 auto;
+  width: 26px;
+  min-height: 26px;
+  padding: 2px 0;
+}
+
+.draw-steel-target-damage-undo-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 999px;
+  background: rgba(214, 88, 88, 0.9);
+  color: white;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.draw-steel-target-damage-undo-button:not(:disabled) {
+  background: rgba(214, 88, 88, 0.18);
+}
+
+.draw-steel-target-damage-undo-button:not(:disabled):hover {
+  background: rgba(214, 88, 88, 0.32);
+}
+
+.draw-steel-target-damage-action-row.is-applied .draw-steel-target-damage-stretch-button {
+  background: rgba(46, 204, 113, 0.18);
+}
+
+.draw-steel-target-damage-action-row.is-undone .draw-steel-target-damage-stretch-button {
+  background: rgba(128, 128, 128, 0.10);
+}
+
+.draw-steel-target-damage-quick-damage {
+  margin-left: auto;
+  max-width: 42%;
+  min-height: 22px;
+  padding: 2px 5px;
+  flex: 0 1 auto;
+  font-size: 0.72rem;
+}
+
+.draw-steel-target-damage-quick-damage > i {
+  flex: 0 0 auto;
+}
+
+.draw-steel-target-damage-quick-damage > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draw-steel-target-damage-quick-damage:disabled {
+  background: rgba(46, 204, 113, 0.18);
+}
+
+.draw-steel-target-damage-button-icon-img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: 2px;
+}
+
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-acid > i { color: #6fbf4a; }
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-cold > i { color: #65c7f7; }
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-corruption > i { color: #9b59b6; }
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-fire > i { color: #e74c3c; }
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-holy > i { color: #f1c40f; }
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-lightning > i { color: #f7dc6f; }
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-poison > i { color: #2ecc71; }
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-psychic > i { color: #e056fd; }
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-sonic > i { color: #00cec9; }
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-healing > i { color: #2ecc71; }
+.draw-steel-target-damage-action-button.draw-steel-target-damage-damage-type-untyped > i { color: inherit; }
+
+.draw-steel-target-damage-result-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.12);
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.draw-steel-target-damage-empty,
+.draw-steel-target-damage-muted {
+  margin: 0;
+  font-size: 0.78rem;
+  opacity: 0.75;
+}
+
+/* ===== Hide system buttons setting ===== */
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) .apply-damage,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] button[data-action="applyEffect"],
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] button[data-action="gainResource"],
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] [data-action="applyEffect"],
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] [data-action="gainResource"] {
+  display: none !important;
+}
+
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] [data-action="resultPartContext"],
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] [data-action="resultPartContext"] + hr,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] hr:has(+ [data-action="resultPartContext"]),
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part]:has(.apply-damage) > hr:last-of-type,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part]:has([data-action="applyEffect"]) > hr:last-of-type,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part]:has([data-action="gainResource"]) > hr:last-of-type,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part]:has([data-action="resultPartContext"]) > hr:last-of-type,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] > *:has(.apply-damage) + hr,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] > *:has([data-action="applyEffect"]) + hr,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] > *:has([data-action="gainResource"]) + hr,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] > *:has([data-action="resultPartContext"]) + hr,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] hr:has(+ * [data-action="resultPartContext"]),
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] footer:has([data-action="resultPartContext"]) hr,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] .button-row:has([data-action="resultPartContext"]) + hr,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] .controls:has([data-action="resultPartContext"]) + hr,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) .draw-steel-target-damage-hidden-system-divider,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) .draw-steel-target-damage-hidden-system-wrapper {
+  display: none !important;
+}
+
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section.draw-steel-target-damage-trim-system-divider {
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+}
+
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section.draw-steel-target-damage-trim-system-divider::after {
+  content: none !important;
+  display: none !important;
+}
+
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section.draw-steel-target-damage-trim-system-divider > :last-child {
+  border-bottom: 0 !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] .dice-roll,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] .dice-tooltip {
+  display: none !important;
+}
