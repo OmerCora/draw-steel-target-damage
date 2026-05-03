@@ -9,6 +9,14 @@ A Foundry VTT module for the [Draw Steel](https://mcdmproductions.com) system th
 
 Target Damage adds buttons for each target before/after an ability roll, and lets the Director or permitted actor owner apply the right damage or status without reselecting tokens over and over.
 
+<img width="855" height="481" alt="Screenshot 2026-05-03 003845" src="https://github.com/user-attachments/assets/51a0a0f3-7131-459f-9eb0-1514db55a5ae" />
+
+
+
+https://github.com/user-attachments/assets/88f1906f-5ebe-4804-b5f4-a8c2aef774d0
+
+
+
 ## Features
 
 ### Per-Target Chat Controls
