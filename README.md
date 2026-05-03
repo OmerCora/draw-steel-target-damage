@@ -2,7 +2,6 @@
 
 [![Downloads](https://img.shields.io/github/downloads/OmerCora/draw-steel-target-damage/total?label=Downloads&color=4aa94a)](https://github.com/OmerCora/draw-steel-target-damage/releases)
 [![Latest Version Downloads](https://img.shields.io/github/downloads/OmerCora/draw-steel-target-damage/latest/total?label=Latest%20Version&color=4aa94a)](https://github.com/OmerCora/draw-steel-target-damage/releases/latest)
-[![Foundry Installs](https://img.shields.io/endpoint?url=https://foundryshields.com/installs?packageName=draw-steel-target-damage)](https://foundryvtt.com/packages/draw-steel-target-damage)
 
 A Foundry VTT module for the [Draw Steel](https://mcdmproductions.com) system that adds target-aware damage, healing, status condition application with undo. Auto targeting with system AOE region placement. Also supports reactive tests directly to ability chat cards.
 
