@@ -38,7 +38,7 @@ const APPLY_EFFECT_SELECTOR = `.roll-link[data-type="status"], .roll-link[data-t
 const DAMAGE_TYPE_ICONS = {
   acid: "fa-solid fa-flask-vial",
   cold: "fa-solid fa-snowflake",
-  corruption: "fa-solid fa-biohazard",
+  corruption: "fa-brands fa-galactic-republic",
   fire: "fa-solid fa-fire",
   holy: "fa-solid fa-sun",
   lightning: "fa-solid fa-bolt",
@@ -48,6 +48,7 @@ const DAMAGE_TYPE_ICONS = {
 };
 
 const HIDDEN_SYSTEM_DIVIDER_CLASS = `${MODULE_ID}-hidden-system-divider`;
+const HIDDEN_SYSTEM_RESULT_CLASS = `${MODULE_ID}-hidden-system-result`;
 const HIDDEN_SYSTEM_WRAPPER_CLASS = `${MODULE_ID}-hidden-system-wrapper`;
 const TRIM_SYSTEM_DIVIDER_CLASS = `${MODULE_ID}-trim-system-divider`;
 const collapseStateByMessageId = new Map();
@@ -276,12 +277,14 @@ function buildInitialMessageState(message, { hasApplyLinks = false } = {}) {
 
 function renderTargetPanel(message, html, state) {
   const existing = html.querySelector(`.${PANEL_CLASS}`);
-  const collapseState = mergeCollapseState(collectCollapseState(existing), getRememberedCollapseState(message.id));
+  const targets = getRenderableTargets(state);
+  const collapseState = targets.length > 1
+    ? mergeCollapseState(collectCollapseState(existing), getRememberedCollapseState(message.id))
+    : new Map();
   if (existing) existing.remove();
   if (!state) return;
 
   const isReactive = (state.isReactive || isReactiveAbilityMessage(message)) && !getParts(message).some(part => hasPowerRolls(part));
-  const targets = getRenderableTargets(state);
   const renderContext = {
     applyActions: buildApplyActionsFromHtml(html),
     collapseState,
@@ -313,13 +316,15 @@ function renderTargetPanel(message, html, state) {
     panel.append(list);
   }
 
+  panel.classList.toggle(`${MODULE_ID}-single-target`, panel.querySelectorAll(`.${MODULE_ID}-target-row[data-target-key]`).length === 1);
+
   panel.addEventListener("click", event => handlePanelClick(event, message));
 
   const dsFooter = html.querySelector(":scope > footer");
   if (dsFooter) dsFooter.insertAdjacentElement("beforebegin", panel);
   else html.insertAdjacentElement("beforeend", panel);
 
-  hideAdjacentSystemDividers(html, panel);
+  hideAdjacentSystemDividers(message, html, panel);
   rememberCollapseState(message.id, panel);
 }
 
@@ -535,11 +540,13 @@ function rememberCurrentCollapseState(messageId) {
 
 function rememberCollapseState(messageId, panel) {
   const state = collectCollapseState(panel);
-  if (state.size) collapseStateByMessageId.set(messageId, state);
+  if (state.size > 1) collapseStateByMessageId.set(messageId, state);
+  else collapseStateByMessageId.delete(messageId);
   return state;
 }
 
 function getInitialCollapsedState(target, renderContext, fallback) {
+  if (Number(renderContext.targetCount ?? 0) <= 1) return false;
   const key = getTargetKey(target);
   return renderContext.collapseState?.has(key) ? renderContext.collapseState.get(key) : fallback;
 }
@@ -800,7 +807,7 @@ function createDamageActionRow(message, state, target, action) {
 
   if (isSelectedTokenStack && stackCount > 0) appendUndoBadge(undoButton, stackCount);
 
-  row.append(applyButton, editButton, undoButton);
+  row.append(applyButton, undoButton, editButton);
   return row;
 }
 
@@ -1006,7 +1013,10 @@ async function handlePanelClick(event, message) {
   const action = button.dataset.dstdAction;
   if (action === "toggleTarget") {
     if (event.target.closest(`button, .${MODULE_ID}-action-button, .${MODULE_ID}-icon-button`)) return;
-    button.closest(`.${MODULE_ID}-target-row`)?.classList.toggle("is-collapsed");
+    const row = button.closest(`.${MODULE_ID}-target-row`);
+    const targetRows = row?.closest(`.${PANEL_CLASS}`)?.querySelectorAll(`.${MODULE_ID}-target-row[data-target-key]`) ?? [];
+    if (targetRows.length <= 1) row?.classList.remove("is-collapsed");
+    else row?.classList.toggle("is-collapsed");
     rememberCurrentCollapseState(message.id);
     return;
   }
@@ -1071,6 +1081,7 @@ async function handlePanelClick(event, message) {
 function buildPayloadFromButton(button, message, event) {
   const action = button.dataset.dstdAction ?? "";
   let target = button.dataset.target ? JSON.parse(button.dataset.target) : null;
+  const stateTarget = target;
   const messageState = getEffectiveMessageState(message);
   const rawOperationId = button.dataset.operationId;
   const operationId = button.dataset.operationId;
@@ -1079,10 +1090,12 @@ function buildPayloadFromButton(button, message, event) {
     target = getSelectedTokenTarget();
     if (!target) throw new Error(localize("Notify.NoSelectedToken"));
   }
+  const targetKey = getTargetKey(stateTarget);
   return {
     messageId: message.id,
     operationId,
     target,
+    targetKey,
     selectedTokenStack,
     partId: button.dataset.partId,
     rollIndex: button.dataset.rollIndex,
@@ -1092,6 +1105,7 @@ function buildPayloadFromButton(button, message, event) {
     effectUuid: button.dataset.effectUuid,
     characteristic: button.dataset.characteristic,
     abilityUuid: button.dataset.abilityUuid,
+    tierOverride: messageState.tierOverrides?.[targetKey] ?? null,
     damageOverride: messageState.damageOverrides?.[operationId] ?? messageState.damageOverrides?.[rawOperationId] ?? null,
     syntheticDamage: button.dataset.syntheticDamage === "true" ? {
       amount: button.dataset.amount,
@@ -1282,14 +1296,16 @@ function canCurrentUserUpdateTargets(message) {
   return authorId === game.user.id || state.sourceUserId === game.user.id;
 }
 
-function hideAdjacentSystemDividers(root, panel) {
+function hideAdjacentSystemDividers(message, root, panel) {
   for (const element of root.querySelectorAll(`.${HIDDEN_SYSTEM_DIVIDER_CLASS}`)) element.classList.remove(HIDDEN_SYSTEM_DIVIDER_CLASS);
+  for (const element of root.querySelectorAll(`.${HIDDEN_SYSTEM_RESULT_CLASS}`)) element.classList.remove(HIDDEN_SYSTEM_RESULT_CLASS);
   for (const element of root.querySelectorAll(`.${HIDDEN_SYSTEM_WRAPPER_CLASS}`)) element.classList.remove(HIDDEN_SYSTEM_WRAPPER_CLASS);
   for (const element of root.querySelectorAll(`.${TRIM_SYSTEM_DIVIDER_CLASS}`)) element.classList.remove(TRIM_SYSTEM_DIVIDER_CLASS);
 
   const previousPart = findPreviousMessagePart(panel);
   if (previousPart) {
     previousPart.classList.add(TRIM_SYSTEM_DIVIDER_CLASS);
+    hideAdjacentSystemResult(message, previousPart);
     hideTrailingDividers(previousPart);
   }
 
@@ -1303,6 +1319,14 @@ function findPreviousMessagePart(panel) {
     previous = previous.previousElementSibling;
   }
   return null;
+}
+
+function hideAdjacentSystemResult(message, section) {
+  const partId = section?.dataset?.messagePart;
+  const part = getParts(message).find(candidate => getPartId(candidate) === partId);
+  if (!isRollResultPart(part)) return;
+  if (!section.querySelector?.(".power-roll-display, .power-roll-result, .tier-result, .test-result")) return;
+  section.classList.add(HIDDEN_SYSTEM_RESULT_CLASS);
 }
 
 function hideTrailingDividers(section) {

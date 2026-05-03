@@ -135,7 +135,11 @@ export function collectCurrentTargets() {
 
 export function getTargetKey(target) {
   if (target?.selectedToken) return "selected-token";
-  return target?.tokenUuid ?? target?.actorUuid ?? target?.tokenId ?? target?.actorId ?? "";
+  const raw = target?.tokenUuid ?? target?.actorUuid ?? target?.tokenId ?? target?.actorId ?? "";
+  // Replace dots so the key is safe to use as an object key inside Foundry flags
+  // (setFlag runs expandObject on the value, which would otherwise turn a dotted
+  // key like "Scene.x.Token.y" into a nested path).
+  return String(raw).replace(/\./g, "__");
 }
 
 export async function resolveTarget(target) {

@@ -49,8 +49,8 @@ export async function applyDamageOperation(payload, context) {
     appliedAt: Date.now(),
   };
 
-  if (payload.selectedTokenStack) await pushApplicationRecord(message.id, payload.operationId, record);
-  else await writeApplicationRecord(message.id, payload.operationId, record);
+  if (payload.selectedTokenStack) await pushApplicationRecord(message.id, payload.operationId, record, payload, context.user);
+  else await writeApplicationRecord(message.id, payload.operationId, record, payload, context.user);
   return { success: true, record };
 }
 
@@ -77,8 +77,8 @@ export async function undoDamageOperation(payload, context) {
     afterUndo: getStaminaSnapshot(actor),
   };
 
-  if (payload.selectedTokenStack || isStackedApplication(entry)) await popApplicationRecord(message.id, payload.operationId, record);
-  else await writeApplicationRecord(message.id, payload.operationId, record);
+  if (payload.selectedTokenStack || isStackedApplication(entry)) await popApplicationRecord(message.id, payload.operationId, record, payload, context.user);
+  else await writeApplicationRecord(message.id, payload.operationId, record, payload, context.user);
   return { success: true, record };
 }
 
@@ -125,8 +125,8 @@ export async function applyStatusOperation(payload, context) {
     appliedAt: Date.now(),
   };
 
-  if (payload.selectedTokenStack) await pushApplicationRecord(message.id, payload.operationId, record);
-  else await writeApplicationRecord(message.id, payload.operationId, record);
+  if (payload.selectedTokenStack) await pushApplicationRecord(message.id, payload.operationId, record, payload, context.user);
+  else await writeApplicationRecord(message.id, payload.operationId, record, payload, context.user);
   return { success: true, record };
 }
 
@@ -156,8 +156,8 @@ export async function undoStatusOperation(payload, context) {
     undoneAt: Date.now(),
   };
 
-  if (payload.selectedTokenStack || isStackedApplication(entry)) await popApplicationRecord(message.id, payload.operationId, record);
-  else await writeApplicationRecord(message.id, payload.operationId, record);
+  if (payload.selectedTokenStack || isStackedApplication(entry)) await popApplicationRecord(message.id, payload.operationId, record, payload, context.user);
+  else await writeApplicationRecord(message.id, payload.operationId, record, payload, context.user);
   return { success: true, record };
 }
 
@@ -267,8 +267,10 @@ export function extractReactiveRollResult(message) {
   };
 }
 
-async function writeApplicationRecord(messageId, operationId, record) {
-  await mutateMessageState(messageId, state => {
+async function writeApplicationRecord(messageId, operationId, record, payload = null, user = game.user) {
+  const message = getMessageOrThrow(messageId);
+  await mutateMessageState(message.id, state => {
+    applyInteractionStatePatch(state, payload, user, message);
     state.applications = state.applications ?? {};
     state.applications[operationId] = record;
     state.updatedAt = Date.now();
@@ -276,8 +278,10 @@ async function writeApplicationRecord(messageId, operationId, record) {
   });
 }
 
-async function pushApplicationRecord(messageId, operationId, record) {
-  await mutateMessageState(messageId, state => {
+async function pushApplicationRecord(messageId, operationId, record, payload = null, user = game.user) {
+  const message = getMessageOrThrow(messageId);
+  await mutateMessageState(message.id, state => {
+    applyInteractionStatePatch(state, payload, user, message);
     state.applications = state.applications ?? {};
     const current = state.applications[operationId];
     const stack = getApplicationStack(current).concat(record);
@@ -292,8 +296,10 @@ async function pushApplicationRecord(messageId, operationId, record) {
   });
 }
 
-async function popApplicationRecord(messageId, operationId, undoRecord) {
-  await mutateMessageState(messageId, state => {
+async function popApplicationRecord(messageId, operationId, undoRecord, payload = null, user = game.user) {
+  const message = getMessageOrThrow(messageId);
+  await mutateMessageState(message.id, state => {
+    applyInteractionStatePatch(state, payload, user, message);
     state.applications = state.applications ?? {};
     const current = state.applications[operationId];
     const stack = getApplicationStack(current);
@@ -321,6 +327,20 @@ async function popApplicationRecord(messageId, operationId, undoRecord) {
     state.updatedAt = Date.now();
     return state;
   });
+}
+
+function applyInteractionStatePatch(state, payload, user, message) {
+  if (!payload || !canUserMutateMessage(user, message, state)) return;
+
+  if (payload.targetKey && payload.tierOverride) {
+    state.tierOverrides = state.tierOverrides ?? {};
+    state.tierOverrides[payload.targetKey] = payload.tierOverride;
+  }
+
+  if (payload.operationId && payload.damageOverride) {
+    state.damageOverrides = state.damageOverrides ?? {};
+    state.damageOverrides[payload.operationId] = payload.damageOverride;
+  }
 }
 
 function getLatestAppliedRecord(entry) {

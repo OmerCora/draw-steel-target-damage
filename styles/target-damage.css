@@ -11,10 +11,6 @@
   background: rgba(128, 128, 128, 0.08);
 }
 
-body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) .draw-steel-target-damage-panel {
-  margin-top: -10px;
-}
-
 /* ----- Header ----- */
 .draw-steel-target-damage-header {
   display: flex;
@@ -109,6 +105,10 @@ body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.
   font-size: 0.65rem;
   opacity: 0.65;
   transition: transform 160ms ease;
+}
+
+.draw-steel-target-damage-panel.draw-steel-target-damage-single-target .draw-steel-target-damage-target-toggle {
+  display: none;
 }
 
 .draw-steel-target-damage-target-body {
@@ -424,6 +424,7 @@ body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.
 body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] .button-row:has([data-action="resultPartContext"]) + hr,
 body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) section[data-message-part] .controls:has([data-action="resultPartContext"]) + hr,
 body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) .draw-steel-target-damage-hidden-system-divider,
+body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) .draw-steel-target-damage-hidden-system-result,
 body.draw-steel-target-damage-hide-system li.chat-message[data-message-id]:has(.draw-steel-target-damage-panel) .draw-steel-target-damage-hidden-system-wrapper {
   display: none !important;
 }
