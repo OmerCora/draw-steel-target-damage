@@ -22,6 +22,7 @@
   "DSTD.Chat.ApplyDamageTooltip": "Shift+Click to deal half damage.",
   "DSTD.Chat.ApplyHealing": "Heal {amount}",
   "DSTD.Chat.ApplyTypedHealing": "Heal {amount} {type}",
+  "DSTD.Chat.ApplyTemporaryStamina": "{amount} Temporary Stamina",
   "DSTD.Chat.ApplyStatus": "Apply {name}",
   "DSTD.Chat.Undo": "Undo",
   "DSTD.Chat.EditRoll": "Edit Roll",

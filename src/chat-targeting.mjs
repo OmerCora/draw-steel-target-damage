@@ -25,6 +25,7 @@ import {
   isPowerRoll,
   isRollResultPart,
   isReactiveAbilityMessage,
+  isStandaloneTestMessage,
   makeOperationId,
   normalizeTargetToken,
   readNaturalRoll,
@@ -102,6 +103,7 @@ export function refreshExistingChatMessages() {
     if (!root) continue;
     if (!canRenderTargetPanel(message, root)) {
       root.querySelector(`.${PANEL_CLASS}`)?.remove();
+      clearSystemHiding(root);
       continue;
     }
     renderChatMessageTargets(message, root);
@@ -208,6 +210,7 @@ function getRenderState(message, root = null) {
 }
 
 function canRenderTargetPanel(message, root = null) {
+  if (isStandaloneTestMessage(message)) return false;
   if (shouldManageMessage(message) || hasApplyEffectLinks(root)) return true;
   if (!hasModuleState(message) && !localStateByMessageId.has(message.id)) return false;
 
@@ -239,6 +242,7 @@ async function initializeMessageState(message) {
 }
 
 function buildInitialMessageState(message, { hasApplyLinks = false } = {}) {
+  if (isStandaloneTestMessage(message)) return null;
   const ability = getAbilityItem(message);
   const hasDamageRoll = hasDamageRolls(message) || getParts(message).some(part => hasDamageRolls(part));
   const hasPowerRoll = getParts(message).some(part => hasPowerRolls(part));
@@ -282,7 +286,10 @@ function renderTargetPanel(message, html, state) {
     ? mergeCollapseState(collectCollapseState(existing), getRememberedCollapseState(message.id))
     : new Map();
   if (existing) existing.remove();
-  if (!state) return;
+  if (!state) {
+    clearSystemHiding(html);
+    return;
+  }
 
   const isReactive = (state.isReactive || isReactiveAbilityMessage(message)) && !getParts(message).some(part => hasPowerRolls(part));
   const renderContext = {
@@ -493,8 +500,10 @@ function addQuickDamageButton(row, message, state, target, action) {
   const canApply = userCanApplyForMessage(game.user, message, state);
   const operationId = makeOperationId("damage", target, action);
   const record = state.applications?.[operationId];
+  const damageType = getEffectiveDamageType(state, target, action);
+  const typeLabel = getEffectiveDamageTypeLabel(state, target, action);
   const button = createActionButton({
-    icon: damageIconForType(getEffectiveDamageType(state, target, action), action.isHeal),
+    icon: damageIconForType(damageType, action.isHeal, typeLabel),
     label: compactDamageLabel(state, target, action, record),
     action: "applyDamage",
     target,
@@ -502,7 +511,7 @@ function addQuickDamageButton(row, message, state, target, action) {
     disabled: record?.status === "applied" || !canApply,
     tooltip: applyControlTooltip(canApply, action.isHeal ? null : localize("Chat.ApplyDamageTooltip")),
     extraDataset: damageActionDataset(action),
-    classes: [`${MODULE_ID}-quick-damage`, damageTypeClass(getEffectiveDamageType(state, target, action), action.isHeal)],
+    classes: [`${MODULE_ID}-quick-damage`, damageTypeClass(damageType, action.isHeal)],
   });
 
   head.insertBefore(button, toggle);
@@ -758,7 +767,9 @@ function createDamageActionRow(message, state, target, action) {
 
   let label;
   if (action.isHeal) {
-    label = typeLabel
+    label = isTemporaryStaminaHeal(damageType, typeLabel)
+      ? localize("Chat.ApplyTemporaryStamina", { amount: baseAmount })
+      : typeLabel
       ? localize("Chat.ApplyTypedHealing", { amount: baseAmount, type: typeLabel })
       : localize("Chat.ApplyHealing", { amount: baseAmount });
   } else {
@@ -768,7 +779,7 @@ function createDamageActionRow(message, state, target, action) {
   }
 
   const applyButton = createActionButton({
-    icon: damageIconForType(damageType, action.isHeal),
+    icon: damageIconForType(damageType, action.isHeal, typeLabel),
     label: isApplied ? appliedLabel(record) : label,
     action: "applyDamage",
     target,
@@ -912,7 +923,8 @@ function compactDamageLabel(state, target, action, record = null) {
   const override = state.damageOverrides?.[operationId];
   const amount = override?.amount != null ? Number(override.amount) : action.amount;
   const typeLabel = override?.typeLabel ?? action.typeLabel;
-  if (action.isHeal) return typeLabel ? `${amount} ${typeLabel}` : `${amount} Healing`;
+  const damageType = override?.damageType ?? action.damageType;
+  if (action.isHeal) return isTemporaryStaminaHeal(damageType, typeLabel) ? `${amount} Temporary Stamina` : typeLabel ? `${amount} ${typeLabel}` : `${amount} Healing`;
   return typeLabel ? `${amount} ${typeLabel}` : `${amount} Damage`;
 }
 
@@ -921,9 +933,20 @@ function getEffectiveDamageType(state, target, action) {
   return state.damageOverrides?.[operationId]?.damageType ?? action.damageType ?? "";
 }
 
-function damageIconForType(type, isHeal = false) {
-  if (isHeal) return "fa-solid fa-heart-pulse";
+function getEffectiveDamageTypeLabel(state, target, action) {
+  const operationId = makeOperationId("damage", target, action);
+  return state.damageOverrides?.[operationId]?.typeLabel ?? action.typeLabel ?? "";
+}
+
+function damageIconForType(type, isHeal = false, typeLabel = "") {
+  if (isHeal) return isTemporaryStaminaHeal(type, typeLabel) ? "fa-solid fa-shield-halved" : "fa-solid fa-heart-pulse";
   return DAMAGE_TYPE_ICONS[type] ?? "fa-solid fa-burst";
+}
+
+function isTemporaryStaminaHeal(type, typeLabel = "") {
+  const key = String(type ?? "").toLowerCase();
+  const label = String(typeLabel ?? "").toLowerCase();
+  return key.includes("temporary") || label.includes("temporary stamina");
 }
 
 function damageTypeClass(type, isHeal = false) {
@@ -1081,20 +1104,23 @@ async function handlePanelClick(event, message) {
 function buildPayloadFromButton(button, message, event) {
   const action = button.dataset.dstdAction ?? "";
   let target = button.dataset.target ? JSON.parse(button.dataset.target) : null;
+  let targets = null;
   const stateTarget = target;
   const messageState = getEffectiveMessageState(message);
   const rawOperationId = button.dataset.operationId;
   const operationId = button.dataset.operationId;
   const selectedTokenStack = !!target?.selectedToken;
   if (selectedTokenStack && !action.startsWith("undo")) {
-    target = getSelectedTokenTarget();
-    if (!target) throw new Error(localize("Notify.NoSelectedToken"));
+    targets = getSelectedTokenTargets();
+    if (!targets.length) throw new Error(localize("Notify.NoSelectedToken"));
+    target = targets[0];
   }
   const targetKey = getTargetKey(stateTarget);
   return {
     messageId: message.id,
     operationId,
     target,
+    targets,
     targetKey,
     selectedTokenStack,
     partId: button.dataset.partId,
@@ -1118,9 +1144,10 @@ function buildPayloadFromButton(button, message, event) {
   };
 }
 
-function getSelectedTokenTarget() {
-  const token = canvas.tokens?.controlled?.[0];
-  return token ? normalizeTargetToken(token) : null;
+function getSelectedTokenTargets() {
+  return Array.from(canvas.tokens?.controlled ?? [])
+    .map(token => normalizeTargetToken(token))
+    .filter(target => target?.tokenUuid || target?.actorUuid);
 }
 
 async function rollReactive(message, payload) {
@@ -1296,11 +1323,15 @@ function canCurrentUserUpdateTargets(message) {
   return authorId === game.user.id || state.sourceUserId === game.user.id;
 }
 
-function hideAdjacentSystemDividers(message, root, panel) {
+function clearSystemHiding(root) {
   for (const element of root.querySelectorAll(`.${HIDDEN_SYSTEM_DIVIDER_CLASS}`)) element.classList.remove(HIDDEN_SYSTEM_DIVIDER_CLASS);
   for (const element of root.querySelectorAll(`.${HIDDEN_SYSTEM_RESULT_CLASS}`)) element.classList.remove(HIDDEN_SYSTEM_RESULT_CLASS);
   for (const element of root.querySelectorAll(`.${HIDDEN_SYSTEM_WRAPPER_CLASS}`)) element.classList.remove(HIDDEN_SYSTEM_WRAPPER_CLASS);
   for (const element of root.querySelectorAll(`.${TRIM_SYSTEM_DIVIDER_CLASS}`)) element.classList.remove(TRIM_SYSTEM_DIVIDER_CLASS);
+}
+
+function hideAdjacentSystemDividers(message, root, panel) {
+  clearSystemHiding(root);
 
   const previousPart = findPreviousMessagePart(panel);
   if (previousPart) {
@@ -1403,7 +1434,7 @@ function notifyDamageResult(result, payload, message) {
   }
   const r = result.record ?? {};
   const sourceName = getEffectiveMessageState(message)?.sourceActorName || "";
-  const targetName = payload.target?.name ?? "Target";
+  const targetName = r.target?.name ?? payload.target?.name ?? "Target";
   if (r.kind === "healing") {
     ui.notifications.info(localize("Notify.HealedTarget", { source: sourceName, target: targetName, amount: r.amount }));
   } else if (r.typeLabel) {
@@ -1423,7 +1454,7 @@ function notifyStatusResult(result, payload, message) {
   const sourceName = getEffectiveMessageState(message)?.sourceActorName || "";
   ui.notifications.info(localize("Notify.InflictedStatus", {
     source: sourceName,
-    target: payload.target?.name ?? "Target",
+    target: r.target?.name ?? payload.target?.name ?? "Target",
     status: r.statusName ?? payload.effectId,
   }));
 }

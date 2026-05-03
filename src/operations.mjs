@@ -6,8 +6,6 @@ import { getMessageState, mutateMessageState } from "./state.mjs";
 export async function applyDamageOperation(payload, context) {
   const { message, roll } = getRollContext(payload, { allowSynthetic: !!payload.syntheticDamage });
   assertCanApplyForMessage(context.user, message);
-  const { actor } = await resolveTargetOrThrow(payload.target);
-  const before = getStaminaSnapshot(actor);
 
   const override = payload.damageOverride ?? null;
   const synthetic = payload.syntheticDamage ?? null;
@@ -18,36 +16,27 @@ export async function applyDamageOperation(payload, context) {
   const isHeal = roll?.isHeal ?? synthetic?.isHeal ?? false;
 
   const amount = payload.halfDamage ? Math.floor(baseAmount / 2) : baseAmount;
+  const applicationTargets = getApplicationTargets(payload);
+  const records = [];
 
-  if (isHeal) {
-    const isTemporary = (roll?.type ?? synthetic?.damageType) !== "value";
-    await actor.modifyTokenAttribute(isTemporary ? "stamina.temporary" : "stamina", amount, !isTemporary, !isTemporary);
-  } else {
-    await actor.system.takeDamage(amount, {
-      type: damageType,
+  for (const target of applicationTargets) {
+    records.push(await applyDamageToTarget(target, {
+      kind: isHeal ? "healing" : "damage",
+      isHeal,
+      healType: roll?.type ?? synthetic?.damageType,
+      amount,
+      originalAmount: Number(roll?.total ?? syntheticAmount ?? 0),
+      halfDamage: !!payload.halfDamage,
+      damageType,
+      typeLabel,
+      override,
       ignoredImmunities: roll?.ignoredImmunities ?? synthetic?.ignoredImmunities ?? [],
-    });
+      partId: payload.partId,
+      rollIndex: Number.isFinite(Number(payload.rollIndex)) ? Number(payload.rollIndex) : payload.rollIndex,
+    }, context.user));
   }
 
-  const after = getStaminaSnapshot(actor);
-  const record = {
-    kind: isHeal ? "healing" : "damage",
-    status: "applied",
-    target: payload.target,
-    partId: payload.partId,
-    rollIndex: Number.isFinite(Number(payload.rollIndex)) ? Number(payload.rollIndex) : payload.rollIndex,
-    amount,
-    originalAmount: Number(roll?.total ?? syntheticAmount ?? 0),
-    halfDamage: !!payload.halfDamage,
-    damageType,
-    typeLabel,
-    override: override ?? null,
-    before,
-    after,
-    appliedByUserId: context.user?.id ?? game.user.id,
-    appliedByUserName: context.user?.name ?? game.user.name,
-    appliedAt: Date.now(),
-  };
+  const record = makeStackRecord(payload, records);
 
   if (payload.selectedTokenStack) await pushApplicationRecord(message.id, payload.operationId, record, payload, context.user);
   else await writeApplicationRecord(message.id, payload.operationId, record, payload, context.user);
@@ -60,35 +49,128 @@ export async function undoDamageOperation(payload, context) {
   assertCanApplyForMessage(context.user, message, state);
   const entry = state.applications?.[payload.operationId];
   const prior = getLatestAppliedRecord(entry);
-  if (!prior?.before) throw new Error("No applied damage record was found");
+  if (!prior) throw new Error("No applied damage record was found");
 
-  const { actor } = await resolveTargetOrThrow(prior.target ?? payload.target);
-  await actor.update({
-    "system.stamina.value": prior.before.value,
-    "system.stamina.temporary": prior.before.temporary,
-  });
-
-  const record = {
-    ...prior,
-    status: "undone",
-    undoneByUserId: context.user?.id ?? game.user.id,
-    undoneByUserName: context.user?.name ?? game.user.name,
-    undoneAt: Date.now(),
-    afterUndo: getStaminaSnapshot(actor),
-  };
+  const record = Array.isArray(prior.records)
+    ? await undoDamageBatch(prior, context.user)
+    : await undoDamageRecord(prior, context.user);
 
   if (payload.selectedTokenStack || isStackedApplication(entry)) await popApplicationRecord(message.id, payload.operationId, record, payload, context.user);
   else await writeApplicationRecord(message.id, payload.operationId, record, payload, context.user);
   return { success: true, record };
 }
 
+async function applyDamageToTarget(target, data, user) {
+  const { actor } = await resolveTargetOrThrow(target);
+  const before = getStaminaSnapshot(actor);
+
+  if (data.isHeal) {
+    const isTemporary = data.healType !== "value";
+    await actor.modifyTokenAttribute(isTemporary ? "stamina.temporary" : "stamina", data.amount, !isTemporary, !isTemporary);
+  } else {
+    await actor.system.takeDamage(data.amount, {
+      type: data.damageType,
+      ignoredImmunities: data.ignoredImmunities,
+    });
+  }
+
+  return {
+    kind: data.kind,
+    status: "applied",
+    target,
+    partId: data.partId,
+    rollIndex: data.rollIndex,
+    amount: data.amount,
+    originalAmount: data.originalAmount,
+    halfDamage: data.halfDamage,
+    damageType: data.damageType,
+    typeLabel: data.typeLabel,
+    override: data.override ?? null,
+    before,
+    after: getStaminaSnapshot(actor),
+    appliedByUserId: user?.id ?? game.user.id,
+    appliedByUserName: user?.name ?? game.user.name,
+    appliedAt: Date.now(),
+  };
+}
+
+async function undoDamageRecord(prior, user) {
+  if (!prior?.before) throw new Error("No applied damage record was found");
+
+  const { actor } = await resolveTargetOrThrow(prior.target);
+  await actor.update({
+    "system.stamina.value": prior.before.value,
+    "system.stamina.temporary": prior.before.temporary,
+  });
+
+  return {
+    ...prior,
+    status: "undone",
+    undoneByUserId: user?.id ?? game.user.id,
+    undoneByUserName: user?.name ?? game.user.name,
+    undoneAt: Date.now(),
+    afterUndo: getStaminaSnapshot(actor),
+  };
+}
+
+async function undoDamageBatch(prior, user) {
+  const records = [];
+  for (const record of prior.records) records.push(await undoDamageRecord(record, user));
+  return {
+    ...prior,
+    status: "undone",
+    records,
+    undoneByUserId: user?.id ?? game.user.id,
+    undoneByUserName: user?.name ?? game.user.name,
+    undoneAt: Date.now(),
+  };
+}
+
 export async function applyStatusOperation(payload, context) {
   const message = getMessageOrThrow(payload.messageId);
   const state = getMessageState(message);
   assertCanApplyForMessage(context.user, message, state);
-  const { actor } = await resolveTargetOrThrow(payload.target);
   const powerEffect = payload.effectUuid ? await fromUuid(payload.effectUuid) : null;
   const statusName = getStatusName(powerEffect, payload.effectId);
+  const applicationTargets = getApplicationTargets(payload);
+  const records = [];
+
+  for (const target of applicationTargets) {
+    records.push(await applyStatusToTarget(target, {
+      payload,
+      powerEffect,
+      statusName,
+      sourceActorUuid: state.sourceActorUuid,
+    }, context.user));
+  }
+
+  const record = makeStackRecord(payload, records);
+
+  if (payload.selectedTokenStack) await pushApplicationRecord(message.id, payload.operationId, record, payload, context.user);
+  else await writeApplicationRecord(message.id, payload.operationId, record, payload, context.user);
+  return { success: true, record };
+}
+
+export async function undoStatusOperation(payload, context) {
+  const message = getMessageOrThrow(payload.messageId);
+  const state = getMessageState(message);
+  assertCanApplyForMessage(context.user, message, state);
+  const entry = state.applications?.[payload.operationId];
+  const prior = getLatestAppliedRecord(entry);
+  if (!prior) throw new Error("No applied status record was found");
+
+  const record = Array.isArray(prior.records)
+    ? await undoStatusBatch(prior, context.user)
+    : await undoStatusRecord(prior, context.user);
+
+  if (payload.selectedTokenStack || isStackedApplication(entry)) await popApplicationRecord(message.id, payload.operationId, record, payload, context.user);
+  else await writeApplicationRecord(message.id, payload.operationId, record, payload, context.user);
+  return { success: true, record };
+}
+
+async function applyStatusToTarget(target, data, user) {
+  const { actor } = await resolveTargetOrThrow(target);
+  const { payload, powerEffect, statusName } = data;
   const beforeEffects = findMatchingEffects(actor, payload.effectId, statusName).map(effect => effect.toObject());
 
   if (powerEffect?.applyEffect) {
@@ -105,13 +187,13 @@ export async function applyStatusOperation(payload, context) {
 
   const afterEffects = findMatchingEffects(actor, payload.effectId, statusName);
   if (TARGETED_STATUS_IDS.has(payload.effectId)) {
-    await addTargetedStatusSource(afterEffects, payload.effectId, state.sourceActorUuid ?? powerEffect?.item?.actor?.uuid);
+    await addTargetedStatusSource(afterEffects, payload.effectId, data.sourceActorUuid ?? powerEffect?.item?.actor?.uuid);
   }
 
-  const record = {
+  return {
     kind: "status",
     status: "applied",
-    target: payload.target,
+    target,
     partId: payload.partId,
     tier: Number(payload.tier),
     effectId: payload.effectId,
@@ -120,25 +202,14 @@ export async function applyStatusOperation(payload, context) {
     targeted: TARGETED_STATUS_IDS.has(payload.effectId),
     beforeEffects,
     afterEffectIds: afterEffects.map(effect => effect.id),
-    appliedByUserId: context.user?.id ?? game.user.id,
-    appliedByUserName: context.user?.name ?? game.user.name,
+    appliedByUserId: user?.id ?? game.user.id,
+    appliedByUserName: user?.name ?? game.user.name,
     appliedAt: Date.now(),
   };
-
-  if (payload.selectedTokenStack) await pushApplicationRecord(message.id, payload.operationId, record, payload, context.user);
-  else await writeApplicationRecord(message.id, payload.operationId, record, payload, context.user);
-  return { success: true, record };
 }
 
-export async function undoStatusOperation(payload, context) {
-  const message = getMessageOrThrow(payload.messageId);
-  const state = getMessageState(message);
-  assertCanApplyForMessage(context.user, message, state);
-  const entry = state.applications?.[payload.operationId];
-  const prior = getLatestAppliedRecord(entry);
-  if (!prior) throw new Error("No applied status record was found");
-
-  const { actor } = await resolveTargetOrThrow(prior.target ?? payload.target);
+async function undoStatusRecord(prior, user) {
+  const { actor } = await resolveTargetOrThrow(prior.target);
   const idsToDelete = (prior.afterEffectIds ?? []).filter(id => actor.effects.get(id));
   if (idsToDelete.length) await actor.deleteEmbeddedDocuments("ActiveEffect", idsToDelete);
 
@@ -148,17 +219,26 @@ export async function undoStatusOperation(payload, context) {
   });
   if (restoreEffects.length) await actor.createEmbeddedDocuments("ActiveEffect", restoreEffects, { keepId: true });
 
-  const record = {
+  return {
     ...prior,
     status: "undone",
-    undoneByUserId: context.user?.id ?? game.user.id,
-    undoneByUserName: context.user?.name ?? game.user.name,
+    undoneByUserId: user?.id ?? game.user.id,
+    undoneByUserName: user?.name ?? game.user.name,
     undoneAt: Date.now(),
   };
+}
 
-  if (payload.selectedTokenStack || isStackedApplication(entry)) await popApplicationRecord(message.id, payload.operationId, record, payload, context.user);
-  else await writeApplicationRecord(message.id, payload.operationId, record, payload, context.user);
-  return { success: true, record };
+async function undoStatusBatch(prior, user) {
+  const records = [];
+  for (const record of prior.records) records.push(await undoStatusRecord(record, user));
+  return {
+    ...prior,
+    status: "undone",
+    records,
+    undoneByUserId: user?.id ?? game.user.id,
+    undoneByUserName: user?.name ?? game.user.name,
+    undoneAt: Date.now(),
+  };
 }
 
 export async function rollReactiveOperation(payload, context) {
@@ -264,6 +344,29 @@ export function extractReactiveRollResult(message) {
     messageId: message.id,
     tier: Number(roll.product),
     total: Number(roll.total),
+  };
+}
+
+function getApplicationTargets(payload) {
+  const targets = Array.isArray(payload.targets) && payload.targets.length ? payload.targets : [payload.target];
+  const validTargets = targets.filter(target => target?.tokenUuid || target?.actorUuid);
+  if (!validTargets.length) throw new Error("Target actor not found");
+  return validTargets;
+}
+
+function makeStackRecord(payload, records) {
+  if (!records.length) throw new Error("No application records were created");
+  if (!payload.selectedTokenStack || records.length === 1) return records[0];
+
+  const first = records[0];
+  return {
+    ...first,
+    target: {
+      selectedToken: true,
+      name: `${records.length} selected tokens`,
+    },
+    targetCount: records.length,
+    records,
   };
 }
 

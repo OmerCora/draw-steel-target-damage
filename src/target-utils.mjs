@@ -21,10 +21,19 @@ export function getPart(message, partId) {
 }
 
 export function isAbilityMessage(message) {
-  return getParts(message).some(part => ["abilityUse", "abilityResult", "test"].includes(part.type));
+  return getParts(message).some(part => ["abilityUse", "abilityResult"].includes(part.type));
+}
+
+export function isStandaloneTestMessage(message) {
+  const parts = getParts(message);
+  return parts.some(part => part.type === "test")
+    && !parts.some(part => ["abilityUse", "abilityResult"].includes(part.type))
+    && !hasDamageRolls(message)
+    && !parts.some(part => hasDamageRolls(part));
 }
 
 export function isActionableAbilityMessage(message) {
+  if (isStandaloneTestMessage(message)) return false;
   return getParts(message).some(part => isRollResultPart(part) && hasPowerRolls(part)) || isReactiveAbilityMessage(message);
 }
 
@@ -33,6 +42,7 @@ export function isDamageRollMessage(message) {
 }
 
 export function shouldManageMessage(message) {
+  if (isStandaloneTestMessage(message)) return false;
   return isActionableAbilityMessage(message) || isDamageRollMessage(message);
 }
 
@@ -100,7 +110,7 @@ export function hasPowerRolls(container) {
 }
 
 export function isRollResultPart(part) {
-  return ["abilityResult", "test"].includes(part?.type);
+  return part?.type === "abilityResult";
 }
 
 export function normalizeTargetToken(token) {

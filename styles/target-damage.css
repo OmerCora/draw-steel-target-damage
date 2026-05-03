@@ -104,7 +104,7 @@
 .draw-steel-target-damage-target-toggle {
   font-size: 0.65rem;
   opacity: 0.65;
-  transition: transform 160ms ease;
+  transition: transform 192ms ease;
 }
 
 .draw-steel-target-damage-panel.draw-steel-target-damage-single-target .draw-steel-target-damage-target-toggle {
@@ -119,7 +119,7 @@
   padding: 6px;
   overflow: hidden;
   opacity: 1;
-  transition: max-height 180ms ease, opacity 160ms ease, padding 180ms ease;
+  transition: max-height 216ms ease, opacity 192ms ease, padding 216ms ease;
 }
 
 .draw-steel-target-damage-target-row.is-collapsed .draw-steel-target-damage-target-body {
@@ -211,8 +211,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  padding: 2px 8px;
+  flex: 0 0 26px;
+  width: 26px;
+  min-width: 26px;
+  padding: 2px 0;
   border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent);
   font-weight: 700;
 }
