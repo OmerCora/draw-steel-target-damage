@@ -2,7 +2,7 @@
   "id": "draw-steel-target-damage",
   "title": "Draw Steel - Target Damage",
   "description": "Adds target-aware damage, status, undo, and reactive test controls to Draw Steel ability chat messages.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "compatibility": {
     "minimum": "13",
     "verified": "14.360"
