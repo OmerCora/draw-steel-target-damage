@@ -1,5 +1,6 @@
 import { MODULE_ID, SYSTEM_ID } from "./config.mjs";
 import { initializeAoeTargeting } from "./aoe-targeting.mjs";
+import { initializeMinionAutomation } from "./minion-automation.mjs";
 import { applyHideSystemButtons, registerSettings } from "./settings.mjs";
 import { registerSocketHandlers } from "./socket.mjs";
 import { getChatTargetingDebugInfo, initializeChatTargeting } from "./chat-targeting.mjs";
@@ -48,6 +49,7 @@ Hooks.once("ready", () => {
 
   initializeChatTargeting();
   initializeAoeTargeting();
+  initializeMinionAutomation();
   applyHideSystemButtons();
   console.info(`${MODULE_ID} | Ready; chat targeting hooks registered.`);
 });

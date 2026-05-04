@@ -1,11 +1,20 @@
 import { localize, TARGETED_STATUS_IDS } from "./config.mjs";
+import {
+  applySquadMinionDamage,
+  applySquadMinionHealing,
+  getSquadCombatGroup,
+  getStaminaSnapshot,
+  isAreaAbility,
+  restoreChangedMinionStates,
+} from "./minion-automation.mjs";
 import { userCanApplyForMessage } from "./permissions.mjs";
 import { getMessageAuthorId, getPart, resolveTarget } from "./target-utils.mjs";
 import { getMessageState, mutateMessageState } from "./state.mjs";
 
 export async function applyDamageOperation(payload, context) {
   const { message, roll } = getRollContext(payload, { allowSynthetic: !!payload.syntheticDamage });
-  assertCanApplyForMessage(context.user, message);
+  const state = getMessageState(message);
+  assertCanApplyForMessage(context.user, message, state);
 
   const override = payload.damageOverride ?? null;
   const synthetic = payload.syntheticDamage ?? null;
@@ -14,9 +23,11 @@ export async function applyDamageOperation(payload, context) {
   const damageType = override?.damageType ?? roll?.type ?? synthetic?.damageType ?? "";
   const typeLabel = override?.typeLabel ?? roll?.typeLabel ?? synthetic?.typeLabel ?? "";
   const isHeal = roll?.isHeal ?? synthetic?.isHeal ?? false;
+  const areaAbility = await resolveIsAreaAbility(state.abilityUuid ?? payload.abilityUuid);
 
   const amount = payload.halfDamage ? Math.floor(baseAmount / 2) : baseAmount;
   const applicationTargets = getApplicationTargets(payload);
+  const operationTargets = areaAbility ? getContextTargets(payload, applicationTargets) : applicationTargets;
   const records = [];
 
   for (const target of applicationTargets) {
@@ -31,6 +42,8 @@ export async function applyDamageOperation(payload, context) {
       typeLabel,
       override,
       ignoredImmunities: roll?.ignoredImmunities ?? synthetic?.ignoredImmunities ?? [],
+      operationTargets,
+      isAreaAbility: areaAbility,
       partId: payload.partId,
       rollIndex: Number.isFinite(Number(payload.rollIndex)) ? Number(payload.rollIndex) : payload.rollIndex,
     }, context.user));
@@ -61,12 +74,20 @@ export async function undoDamageOperation(payload, context) {
 }
 
 async function applyDamageToTarget(target, data, user) {
-  const { actor } = await resolveTargetOrThrow(target);
-  const before = getStaminaSnapshot(actor);
+  const { actor, tokenDocument } = await resolveTargetOrThrow(target);
+  const before = getStaminaSnapshot(actor, tokenDocument);
+  const squadGroup = getSquadCombatGroup(actor, tokenDocument);
 
   if (data.isHeal) {
     const isTemporary = data.healType !== "value";
-    await actor.modifyTokenAttribute(isTemporary ? "stamina.temporary" : "stamina", data.amount, !isTemporary, !isTemporary);
+    if (!isTemporary && squadGroup) await applySquadMinionHealing(squadGroup, data.amount, {
+      targetTokenDocument: tokenDocument,
+      operationTargets: data.operationTargets,
+      isAreaAbility: data.isAreaAbility,
+    });
+    else await actor.modifyTokenAttribute(isTemporary ? "stamina.temporary" : "stamina", data.amount, !isTemporary, !isTemporary);
+  } else if (squadGroup) {
+    await applySquadMinionDamage(actor, squadGroup, data, tokenDocument);
   } else {
     await actor.system.takeDamage(data.amount, {
       type: data.damageType,
@@ -87,7 +108,7 @@ async function applyDamageToTarget(target, data, user) {
     typeLabel: data.typeLabel,
     override: data.override ?? null,
     before,
-    after: getStaminaSnapshot(actor),
+    after: getStaminaSnapshot(actor, tokenDocument),
     appliedByUserId: user?.id ?? game.user.id,
     appliedByUserName: user?.name ?? game.user.name,
     appliedAt: Date.now(),
@@ -97,11 +118,25 @@ async function applyDamageToTarget(target, data, user) {
 async function undoDamageRecord(prior, user) {
   if (!prior?.before) throw new Error("No applied damage record was found");
 
-  const { actor } = await resolveTargetOrThrow(prior.target);
-  await actor.update({
-    "system.stamina.value": prior.before.value,
-    "system.stamina.temporary": prior.before.temporary,
-  });
+  const { actor, tokenDocument } = await resolveTargetOrThrow(prior.target);
+  const squadGroup = await resolveSnapshotSquadGroup(prior.before, actor, tokenDocument);
+
+  if (squadGroup) {
+    // Delta-based undo: only add back the damage this specific operation applied,
+    // so parallel AoE applications to the same squad pool don't interfere.
+    const currentPool = Number(squadGroup.system?.staminaValue ?? 0);
+    const poolMax = Number(squadGroup.system?.staminaMax ?? prior.before.max ?? Infinity);
+    const appliedDelta = (prior.after?.value ?? prior.before.value) - prior.before.value; // negative = damage
+    const newPool = Math.min(Math.max(0, currentPool - appliedDelta), poolMax);
+    await squadGroup.update({ "system.staminaValue": newPool }, { dstd: { skipMinionAutomationHook: true } });
+    // Only un-defeat minions whose state changed in this specific operation.
+    await restoreChangedMinionStates(squadGroup, prior.before.minions ?? [], prior.after?.minions ?? []);
+  } else {
+    await actor.update({
+      "system.stamina.value": prior.before.value,
+      "system.stamina.temporary": prior.before.temporary,
+    });
+  }
 
   return {
     ...prior,
@@ -109,13 +144,13 @@ async function undoDamageRecord(prior, user) {
     undoneByUserId: user?.id ?? game.user.id,
     undoneByUserName: user?.name ?? game.user.name,
     undoneAt: Date.now(),
-    afterUndo: getStaminaSnapshot(actor),
+    afterUndo: getStaminaSnapshot(actor, tokenDocument),
   };
 }
 
 async function undoDamageBatch(prior, user) {
   const records = [];
-  for (const record of prior.records) records.push(await undoDamageRecord(record, user));
+  for (const record of Array.from(prior.records).reverse()) records.unshift(await undoDamageRecord(record, user));
   return {
     ...prior,
     status: "undone",
@@ -354,6 +389,13 @@ function getApplicationTargets(payload) {
   return validTargets;
 }
 
+function getContextTargets(payload, fallbackTargets) {
+  const validTargets = Array.isArray(payload.contextTargets)
+    ? payload.contextTargets.filter(target => target?.tokenUuid || target?.actorUuid)
+    : [];
+  return validTargets.length ? validTargets : fallbackTargets;
+}
+
 function makeStackRecord(payload, records) {
   if (!records.length) throw new Error("No application records were created");
   if (!payload.selectedTokenStack || records.length === 1) return records[0];
@@ -480,6 +522,16 @@ async function evaluateSyntheticDamageAmount(synthetic, message) {
   return Number(roll.total ?? 0);
 }
 
+async function resolveIsAreaAbility(abilityUuid) {
+  if (!abilityUuid) return false;
+  try {
+    return isAreaAbility(await fromUuid(abilityUuid));
+  } catch (error) {
+    console.warn(`draw-steel-target-damage | Could not resolve ability ${abilityUuid}`, error);
+    return false;
+  }
+}
+
 function getMessageOrThrow(messageId) {
   const message = game.messages.get(messageId);
   if (!message) throw new Error("Chat message not found");
@@ -528,12 +580,14 @@ function canUserMutateMessage(user, message, state = getMessageState(message)) {
   return message.testUserPermission?.(user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OWNER) ?? false;
 }
 
-function getStaminaSnapshot(actor) {
-  return {
-    value: Number(actor.system?.stamina?.value ?? 0),
-    temporary: Number(actor.system?.stamina?.temporary ?? 0),
-    max: Number(actor.system?.stamina?.max ?? 0),
-  };
+async function resolveSnapshotSquadGroup(snapshot, actor, tokenDocument) {
+  if (snapshot?.groupUuid) {
+    try {
+      const group = await fromUuid(snapshot.groupUuid);
+      if (group) return group;
+    } catch (_) {}
+  }
+  return getSquadCombatGroup(actor, tokenDocument);
 }
 
 function getStatusName(powerEffect, effectId) {

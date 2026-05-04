@@ -29,6 +29,8 @@ https://github.com/user-attachments/assets/88f1906f-5ebe-4804-b5f4-a8c2aef774d0
 ### Damage, Healing, and Status Application
 
 - Applies Draw Steel `DamageRoll` results through the system's normal damage handling
+- Applies grouped minion damage and healing through the squad's shared stamina pool
+- Automatically defeats minions as the squad stamina pool crosses thresholds, with area abilities capped to the targeted minions and each area application limited to one minion's stamina
 - Supports healing and temporary stamina from Draw Steel healing rolls
 - Applies power roll status effects and normal Draw Steel conditions
 - Adds typed damage icons with color, so fire, cold, psychic, holy, and the rest are easier to scan
@@ -38,6 +40,7 @@ https://github.com/user-attachments/assets/88f1906f-5ebe-4804-b5f4-a8c2aef774d0
 
 - Adds an undo button beside each target operation
 - Restores stamina and temporary stamina to the previous values after damage or healing
+- Restores squad stamina and minion defeated states for grouped minion operations
 - Removes applied status effects, and restores any matching effects that were present before the button was clicked
 - When no target is designated falls back to system behaviour(selected-token) but with an undo stack when you apply the same base result to several selected tokens. So you can undo multiple times.
 
@@ -73,6 +76,7 @@ In example: If an ability target contains "Allies", Hostile tokens only target o
 - **Hide System Roll & Damage Buttons:** Hides the system's duplicate controls on managed chat cards. Defaults on.
 - **AOE Targeting:** Automatically updates the latest matching ability card when Draw Steel places an area region. Defaults on.
 - **Override Ability Region Visibility:** Creates Draw Steel ability template regions with Always for Anyone visibility instead of Always for Observers. Defaults on.
+- **Automated Minion Damage:** Handles squad stamina caps and minion defeat automation for targeted damage. Defaults on.
 
 ## Installation
 

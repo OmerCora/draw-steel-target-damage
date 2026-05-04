@@ -1,4 +1,5 @@
 import { FLAG_STATE, localize, MODULE_ID } from "./config.mjs";
+import { isAreaAbility } from "./minion-automation.mjs";
 import { executeMutation } from "./socket.mjs";
 import { extractReactiveRollResult } from "./operations.mjs";
 import { userCanApplyForMessage } from "./permissions.mjs";
@@ -292,6 +293,7 @@ function renderTargetPanel(message, html, state) {
   }
 
   const isReactive = (state.isReactive || isReactiveAbilityMessage(message)) && !getParts(message).some(part => hasPowerRolls(part));
+  const isAoe = isAreaAbility(getAbilityItem(message));
   const renderContext = {
     applyActions: buildApplyActionsFromHtml(html),
     collapseState,
@@ -302,7 +304,7 @@ function renderTargetPanel(message, html, state) {
   panel.classList.add(PANEL_CLASS);
   panel.dataset.messageId = message.id;
 
-  panel.append(createPanelHeader(message, state, isReactive));
+  panel.append(createPanelHeader(message, state, isReactive, isAoe));
 
   if (!targets.length) {
     const empty = document.createElement("p");
@@ -335,7 +337,7 @@ function renderTargetPanel(message, html, state) {
   rememberCollapseState(message.id, panel);
 }
 
-function createPanelHeader(message, state, isReactive) {
+function createPanelHeader(message, state, isReactive, isAoe = false) {
   const header = document.createElement("header");
   header.classList.add(`${MODULE_ID}-header`);
 
@@ -351,7 +353,7 @@ function createPanelHeader(message, state, isReactive) {
     || state.sourceUserName
     || game.users.get(getMessageAuthorId(message))?.name
     || "";
-  targeting.textContent = localize("Chat.TargetingLine", { name: sourceName });
+  targeting.textContent = localize(isAoe ? "Chat.TargetingLineAoe" : "Chat.TargetingLine", { name: sourceName });
 
   titleWrap.append(title, targeting);
   header.append(titleWrap);
@@ -384,15 +386,18 @@ function createBaseResultRow(message, state, renderContext = {}) {
   };
   const row = createTargetShell(syntheticTarget);
   const body = getTargetBody(row);
+  const tierOverride = state.tierOverrides?.[getTargetKey(syntheticTarget)] ?? null;
+  const tier = tierOverride?.tier ?? Number(matched?.part?.tier) ?? Number(matched?.powerRoll?.product) ?? null;
+  const tierPart = findResultPartForTier(message, tier);
+  const actionPart = tierOverride ? tierPart : (tierPart ?? matched?.part ?? null);
 
   if (matched?.powerRoll) {
-    body.append(createRollDisplay(message, state, syntheticTarget, matched, Number(matched.part?.tier) || Number(matched.powerRoll.product) || null));
+    body.append(createRollDisplay(message, state, syntheticTarget, matched, tier));
   }
 
-  const damageActions = matched ? buildDamageActionsForPart(matched.part) : [];
-  const statusActions = matched
-    ? buildStatusActionsForPart(matched.part, Number(matched.part?.tier) || Number(matched.powerRoll?.product) || null, message)
-    : [];
+  const damageActions = actionPart ? buildDamageActionsForPart(actionPart) : [];
+  if (!damageActions.length && tier) damageActions.push(...buildDamageActionsForTier(message, tier));
+  const statusActions = buildStatusActionsForPart(actionPart ?? matched?.part, tier, message);
   statusActions.push(...applyActions);
   if (!matched?.powerRoll && !damageActions.length && !statusActions.length) return null;
 
@@ -1115,12 +1120,14 @@ function buildPayloadFromButton(button, message, event) {
     if (!targets.length) throw new Error(localize("Notify.NoSelectedToken"));
     target = targets[0];
   }
+  const contextTargets = selectedTokenStack && targets?.length ? targets : messageState.targets ?? [];
   const targetKey = getTargetKey(stateTarget);
   return {
     messageId: message.id,
     operationId,
     target,
     targets,
+    contextTargets,
     targetKey,
     selectedTokenStack,
     partId: button.dataset.partId,

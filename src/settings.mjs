@@ -5,6 +5,7 @@ export const SETTINGS = {
   hideSystemButtons: "hideSystemButtons",
   aoeTargeting: "aoeTargeting",
   overrideAbilityRegionVisibility: "overrideAbilityRegionVisibility",
+  minionDamageAutomation: "minionDamageAutomation",
 };
 
 const HIDE_SYSTEM_BODY_CLASS = `${MODULE_ID}-hide-system`;
@@ -29,7 +30,7 @@ export function registerSettings() {
   game.settings.register(MODULE_ID, SETTINGS.hideSystemButtons, {
     name: "DSTD.Settings.HideSystemButtons.Name",
     hint: "DSTD.Settings.HideSystemButtons.Hint",
-    scope: "client",
+    scope: "world",
     config: true,
     type: Boolean,
     default: true,
@@ -39,7 +40,7 @@ export function registerSettings() {
   game.settings.register(MODULE_ID, SETTINGS.aoeTargeting, {
     name: "DSTD.Settings.AoeTargeting.Name",
     hint: "DSTD.Settings.AoeTargeting.Hint",
-    scope: "client",
+    scope: "world",
     config: true,
     type: Boolean,
     default: true,
@@ -53,6 +54,15 @@ export function registerSettings() {
     type: Boolean,
     default: true,
     requiresReload: false,
+  });
+
+  game.settings.register(MODULE_ID, SETTINGS.minionDamageAutomation, {
+    name: "DSTD.Settings.MinionDamageAutomation.Name",
+    hint: "DSTD.Settings.MinionDamageAutomation.Hint",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
   });
 }
 
@@ -85,6 +95,14 @@ export function isAbilityRegionVisibilityOverrideEnabled() {
     return !!game.settings.get(MODULE_ID, SETTINGS.overrideAbilityRegionVisibility);
   } catch (_) {
     return false;
+  }
+}
+
+export function isMinionDamageAutomationEnabled() {
+  try {
+    return !!game.settings.get(MODULE_ID, SETTINGS.minionDamageAutomation);
+  } catch (_) {
+    return true;
   }
 }
 
