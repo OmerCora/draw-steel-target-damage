@@ -28,25 +28,42 @@ export async function applyDamageOperation(payload, context) {
   const amount = payload.halfDamage ? Math.floor(baseAmount / 2) : baseAmount;
   const applicationTargets = getApplicationTargets(payload);
   const operationTargets = areaAbility ? getContextTargets(payload, applicationTargets) : applicationTargets;
+  const surgeSpend = await prepareSurgeSpend(message, state, override, isHeal, applicationTargets.length);
   const records = [];
 
-  for (const target of applicationTargets) {
-    records.push(await applyDamageToTarget(target, {
-      kind: isHeal ? "healing" : "damage",
-      isHeal,
-      healType: roll?.type ?? synthetic?.damageType,
-      amount,
-      originalAmount: Number(roll?.total ?? syntheticAmount ?? 0),
-      halfDamage: !!payload.halfDamage,
-      damageType,
-      typeLabel,
-      override,
-      ignoredImmunities: roll?.ignoredImmunities ?? synthetic?.ignoredImmunities ?? [],
-      operationTargets,
-      isAreaAbility: areaAbility,
-      partId: payload.partId,
-      rollIndex: Number.isFinite(Number(payload.rollIndex)) ? Number(payload.rollIndex) : payload.rollIndex,
-    }, context.user));
+  let surgesSpent = false;
+  try {
+    if (surgeSpend) {
+      await spendDamageSurges(surgeSpend);
+      surgesSpent = true;
+    }
+
+    for (const target of applicationTargets) {
+      records.push(await applyDamageToTarget(target, {
+        kind: isHeal ? "healing" : "damage",
+        isHeal,
+        healType: roll?.type ?? synthetic?.damageType,
+        amount,
+        originalAmount: Number(roll?.total ?? syntheticAmount ?? 0),
+        halfDamage: !!payload.halfDamage,
+        damageType,
+        typeLabel,
+        override,
+        surgeSpend,
+        ignoredImmunities: roll?.ignoredImmunities ?? synthetic?.ignoredImmunities ?? [],
+        operationTargets,
+        isAreaAbility: areaAbility,
+        partId: payload.partId,
+        rollIndex: Number.isFinite(Number(payload.rollIndex)) ? Number(payload.rollIndex) : payload.rollIndex,
+      }, context.user));
+    }
+  } catch (error) {
+    if (surgesSpent) {
+      await refundDamageSurges(surgeSpend).catch(refundError => {
+        console.warn("draw-steel-target-damage | Could not refund surges after failed damage application", refundError);
+      });
+    }
+    throw error;
   }
 
   const record = makeStackRecord(payload, records);
@@ -107,6 +124,7 @@ async function applyDamageToTarget(target, data, user) {
     damageType: data.damageType,
     typeLabel: data.typeLabel,
     override: data.override ?? null,
+    surgeSpend: data.surgeSpend ?? null,
     before,
     after: getStaminaSnapshot(actor, tokenDocument),
     appliedByUserId: user?.id ?? game.user.id,
@@ -137,6 +155,8 @@ async function undoDamageRecord(prior, user) {
       "system.stamina.temporary": prior.before.temporary,
     });
   }
+
+  if (prior.surgeSpend?.surges) await refundDamageSurges(prior.surgeSpend);
 
   return {
     ...prior,
@@ -520,6 +540,62 @@ async function evaluateSyntheticDamageAmount(synthetic, message) {
   const roll = new Roll(String(synthetic.formula ?? synthetic.amount ?? "0"), ability?.getRollData?.() ?? {});
   await roll.evaluate();
   return Number(roll.total ?? 0);
+}
+
+async function prepareSurgeSpend(message, state, override, isHeal, targetCount) {
+  const surges = Number(override?.surges ?? 0) || 0;
+  if (isHeal || surges <= 0) return null;
+  if (targetCount !== 1) throw new Error(localize("Notify.SurgesSingleTarget"));
+
+  const actor = await resolveSurgeSourceActor(message, state);
+  if (!actor) throw new Error(localize("Notify.NoSurgeActor"));
+
+  const available = Number(actor.system?.hero?.surges ?? 0) || 0;
+  if (available < surges) throw new Error(localize("Notify.NotEnoughSurges"));
+
+  return {
+    actorUuid: actor.uuid,
+    actorName: actor.name,
+    surges,
+    before: available,
+    after: available - surges,
+    surgeDamage: Number(override?.surgeDamage ?? actor.getRollData?.()?.chr ?? 0) || 0,
+  };
+}
+
+async function spendDamageSurges(surgeSpend) {
+  const actor = await fromUuid(surgeSpend.actorUuid);
+  if (!actor) throw new Error(localize("Notify.NoSurgeActor"));
+  await actor.modifyTokenAttribute("hero.surges", -1 * Number(surgeSpend.surges ?? 0), true, false);
+}
+
+async function refundDamageSurges(surgeSpend) {
+  const actor = await fromUuid(surgeSpend.actorUuid);
+  if (!actor) throw new Error(localize("Notify.NoSurgeActor"));
+  await actor.modifyTokenAttribute("hero.surges", Number(surgeSpend.surges ?? 0), true, false);
+}
+
+async function resolveSurgeSourceActor(message, state) {
+  let sourceActor = null;
+  if (state?.sourceActorUuid) {
+    try {
+      sourceActor = await fromUuid(state.sourceActorUuid);
+    } catch (error) {
+      console.warn("draw-steel-target-damage | Could not resolve source actor for surges", error);
+    }
+  }
+
+  if (!sourceActor && state?.abilityUuid) {
+    try {
+      sourceActor = (await fromUuid(state.abilityUuid))?.actor ?? null;
+    } catch (error) {
+      console.warn("draw-steel-target-damage | Could not resolve ability actor for surges", error);
+    }
+  }
+
+  if (!sourceActor && message?.speaker?.actor) sourceActor = game.actors.get(message.speaker.actor) ?? null;
+  if (sourceActor?.type === "retainer") sourceActor = sourceActor.system?.retainer?.mentor ?? null;
+  return sourceActor?.type === "hero" ? sourceActor : null;
 }
 
 async function resolveIsAreaAbility(abilityUuid) {

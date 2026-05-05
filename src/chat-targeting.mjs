@@ -3,6 +3,7 @@ import { isAreaAbility } from "./minion-automation.mjs";
 import { executeMutation } from "./socket.mjs";
 import { extractReactiveRollResult } from "./operations.mjs";
 import { userCanApplyForMessage } from "./permissions.mjs";
+import { getTargetImageSource, TARGET_IMAGE_SOURCES } from "./settings.mjs";
 import { getMessageState, hasModuleState, mutateMessageState, setMessageState } from "./state.mjs";
 import {
   collectCurrentTargets,
@@ -76,6 +77,7 @@ export function initializeChatTargeting() {
   Hooks.on("renderChatMessage", (message, html) => renderChatMessageTargets(message, html));
   Hooks.on("renderChatMessageHTML", (message, html) => renderChatMessageTargets(message, html));
   Hooks.on("renderChatLog", () => refreshExistingChatMessages());
+  Hooks.on(`${MODULE_ID}.targetImageSourceChanged`, () => refreshExistingChatMessages());
 
   Hooks.on("updateChatMessage", (message, changed) => {
     const changedState = foundry.utils.hasProperty(changed, `flags.${MODULE_ID}.${FLAG_STATE}`)
@@ -479,7 +481,7 @@ function createTargetShell(target, { collapsed = false } = {}) {
 
   const portrait = document.createElement("img");
   portrait.classList.add(`${MODULE_ID}-portrait`);
-  portrait.src = target.img || "icons/svg/mystery-man.svg";
+  portrait.src = getTargetImage(target);
   portrait.alt = target.name || "";
 
   const name = document.createElement("div");
@@ -524,6 +526,18 @@ function addQuickDamageButton(row, message, state, target, action) {
 
 function getTargetBody(row) {
   return row.querySelector(`.${MODULE_ID}-target-body`) ?? row;
+}
+
+function getTargetImage(target) {
+  if (target?.selectedToken) return target.img || "icons/svg/target.svg";
+  const tokenDocument = target?.tokenUuid && (!target?.tokenImg || !target?.actorImg) ? safeFromUuidSync(target.tokenUuid) : null;
+  const tokenImg = target?.tokenImg ?? tokenDocument?.texture?.src ?? null;
+  const actorImg = target?.actorImg ?? (target?.actorUuid ? safeFromUuidSync(target.actorUuid)?.img : null) ?? tokenDocument?.actor?.img ?? null;
+  const imageSource = getTargetImageSource();
+  if (imageSource === TARGET_IMAGE_SOURCES.portrait) {
+    return actorImg ?? target?.img ?? tokenImg ?? "icons/svg/mystery-man.svg";
+  }
+  return tokenImg ?? target?.img ?? actorImg ?? "icons/svg/mystery-man.svg";
 }
 
 function collectCollapseState(panel) {
@@ -770,18 +784,7 @@ function createDamageActionRow(message, state, target, action) {
   if (isUndone) row.classList.add("is-undone");
   if (isSelectedTokenStack && stackCount) row.classList.add("has-stack");
 
-  let label;
-  if (action.isHeal) {
-    label = isTemporaryStaminaHeal(damageType, typeLabel)
-      ? localize("Chat.ApplyTemporaryStamina", { amount: baseAmount })
-      : typeLabel
-      ? localize("Chat.ApplyTypedHealing", { amount: baseAmount, type: typeLabel })
-      : localize("Chat.ApplyHealing", { amount: baseAmount });
-  } else {
-    label = typeLabel
-      ? localize("Chat.ApplyTypedDamage", { amount: baseAmount, type: typeLabel })
-      : localize("Chat.ApplyDamage", { amount: baseAmount });
-  }
+  const label = formatDamageButtonLabel({ amount: baseAmount, damageType, typeLabel, isHeal: action.isHeal, override });
 
   const applyButton = createActionButton({
     icon: damageIconForType(damageType, action.isHeal, typeLabel),
@@ -929,8 +932,29 @@ function compactDamageLabel(state, target, action, record = null) {
   const amount = override?.amount != null ? Number(override.amount) : action.amount;
   const typeLabel = override?.typeLabel ?? action.typeLabel;
   const damageType = override?.damageType ?? action.damageType;
+  const suffix = surgeSuffix(override);
   if (action.isHeal) return isTemporaryStaminaHeal(damageType, typeLabel) ? `${amount} Temporary Stamina` : typeLabel ? `${amount} ${typeLabel}` : `${amount} Healing`;
-  return typeLabel ? `${amount} ${typeLabel}` : `${amount} Damage`;
+  return `${typeLabel ? `${amount} ${typeLabel}` : `${amount} Damage`}${suffix}`;
+}
+
+function formatDamageButtonLabel({ amount, damageType, typeLabel, isHeal = false, override = null }) {
+  if (isHeal) {
+    return isTemporaryStaminaHeal(damageType, typeLabel)
+      ? localize("Chat.ApplyTemporaryStamina", { amount })
+      : typeLabel
+      ? localize("Chat.ApplyTypedHealing", { amount, type: typeLabel })
+      : localize("Chat.ApplyHealing", { amount });
+  }
+
+  const label = typeLabel
+    ? localize("Chat.ApplyTypedDamage", { amount, type: typeLabel })
+    : localize("Chat.ApplyDamage", { amount });
+  return `${label}${surgeSuffix(override)}`;
+}
+
+function surgeSuffix(source = null) {
+  const surges = Number(source?.surges ?? source?.surgeSpend?.surges ?? 0);
+  return surges > 0 ? ` (${surges}s)` : "";
 }
 
 function getEffectiveDamageType(state, target, action) {
@@ -1024,7 +1048,7 @@ function createIconButton({ icon, label = null, action, tooltip = null, disabled
 
 function appliedLabel(record) {
   const suffix = record.halfDamage ? ` (${localize("Chat.Half")})` : "";
-  return `${localize("Chat.Applied")} ${record.amount}${suffix}`;
+  return `${localize("Chat.Applied")} ${record.amount}${surgeSuffix(record)}${suffix}`;
 }
 
 /* ============================================================ */
@@ -1632,6 +1656,42 @@ function safeFromUuidSync(uuid) {
   }
 }
 
+function buildSurgeOptions(available, current = 0) {
+  const maxSelectable = Math.max(Number(available ?? 0) || 0, Number(current ?? 0) || 0);
+  return [0, 1, 2, 3].map(value => {
+    const disabled = value > maxSelectable ? " disabled" : "";
+    return `<option value="${value}"${disabled}>${value}</option>`;
+  }).join("");
+}
+
+async function resolveSurgeEditContext(message) {
+  const actor = await resolveSurgeSourceActor(message);
+  if (actor?.type !== "hero") return null;
+  const damage = Number(actor.getRollData?.()?.chr ?? 0) || 0;
+  return {
+    actor,
+    available: Number(actor.system?.hero?.surges ?? 0) || 0,
+    damage,
+  };
+}
+
+async function resolveSurgeSourceActor(message) {
+  let sourceActor = getAbilityItem(message)?.actor ?? null;
+  if (!sourceActor) {
+    const state = getEffectiveMessageState(message);
+    if (state.sourceActorUuid) {
+      try {
+        sourceActor = await fromUuid(state.sourceActorUuid);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Could not resolve source actor ${state.sourceActorUuid}`, error);
+      }
+    }
+  }
+
+  if (sourceActor?.type === "retainer") sourceActor = sourceActor.system?.retainer?.mentor ?? null;
+  return sourceActor?.type === "hero" ? sourceActor : null;
+}
+
 /* ============================================================ */
 /* Edit dialogs                                                 */
 /* ============================================================ */
@@ -1770,6 +1830,9 @@ async function openEditDamageDialog(message, button) {
     baseAmount = Number(formulaRoll.total ?? 0);
   }
   const currentType = override?.damageType ?? roll?.type ?? roll?.options?.type ?? synthetic?.damageType ?? "";
+  const isHeal = !!(roll?.isHeal ?? synthetic?.isHeal);
+  const surgeContext = isHeal ? null : await resolveSurgeEditContext(message);
+  const currentSurges = Number(override?.surges ?? 0) || 0;
 
   const damageTypes = Object.entries(globalThis.ds?.CONFIG?.damageTypes ?? {}).map(([value, cfg]) => ({
     value,
@@ -1779,7 +1842,18 @@ async function openEditDamageDialog(message, button) {
     .concat(damageTypes.map(d => `<option value="${d.value}">${foundry.utils.escapeHTML(d.label)}</option>`))
     .join("");
 
+  const surgeContent = surgeContext ? `
+    <div class="form-group">
+      <label>${foundry.utils.escapeHTML(localize("Dialog.EditDamage.Surges"))}</label>
+      <select name="surges">${buildSurgeOptions(surgeContext.available, currentSurges)}</select>
+      <p class="hint" style="margin:0; opacity:0.8; font-size:0.8em;">
+        ${foundry.utils.escapeHTML(localize("Dialog.EditDamage.SurgesHint", { damage: surgeContext.damage, available: surgeContext.available }))}
+      </p>
+    </div>
+  ` : "";
+
   const content = `
+    ${surgeContent}
     <div class="form-group">
       <label>${foundry.utils.escapeHTML(localize("Dialog.EditDamage.Additional"))}</label>
       <input type="text" name="additional" placeholder="1d3"/>
@@ -1803,6 +1877,7 @@ async function openEditDamageDialog(message, button) {
         return {
           additional: form.elements.additional.value.trim(),
           damageType: form.elements.damageType.value,
+          surges: Number(form.elements.surges?.value ?? 0) || 0,
         };
       },
     },
@@ -1812,6 +1887,7 @@ async function openEditDamageDialog(message, button) {
       if (form) {
         form.elements.additional.value = override?.additional ?? "";
         form.elements.damageType.value = currentType ?? "";
+        if (form.elements.surges) form.elements.surges.value = String(currentSurges);
       }
     },
   });
@@ -1832,7 +1908,14 @@ async function openEditDamageDialog(message, button) {
 
   const damageType = result.damageType || "";
   const typeLabel = labelForDamageType(damageType);
-  const newAmount = baseAmount + bonus;
+  const surges = surgeContext ? Math.clamp(Number(result.surges ?? 0) || 0, 0, 3) : 0;
+  if (surges > Number(surgeContext?.available ?? 0)) {
+    ui.notifications.warn(localize("Notify.NotEnoughSurges"));
+    return;
+  }
+  const surgeDamage = surgeContext?.damage ?? 0;
+  const surgeBonus = surges * surgeDamage;
+  const newAmount = baseAmount + bonus + surgeBonus;
   const overrideData = {
     amount: newAmount,
     baseAmount,
@@ -1840,6 +1923,9 @@ async function openEditDamageDialog(message, button) {
     additional: result.additional,
     damageType,
     typeLabel,
+    surges,
+    surgeDamage,
+    surgeBonus,
   };
 
   if (message.isOwner) {

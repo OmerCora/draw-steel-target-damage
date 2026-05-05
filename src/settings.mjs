@@ -6,6 +6,12 @@ export const SETTINGS = {
   aoeTargeting: "aoeTargeting",
   overrideAbilityRegionVisibility: "overrideAbilityRegionVisibility",
   minionDamageAutomation: "minionDamageAutomation",
+  targetImageSource: "targetImageSource",
+};
+
+export const TARGET_IMAGE_SOURCES = {
+  token: "token",
+  portrait: "portrait",
 };
 
 const HIDE_SYSTEM_BODY_CLASS = `${MODULE_ID}-hide-system`;
@@ -64,6 +70,20 @@ export function registerSettings() {
     type: Boolean,
     default: true,
   });
+
+  game.settings.register(MODULE_ID, SETTINGS.targetImageSource, {
+    name: "DSTD.Settings.TargetImageSource.Name",
+    hint: "DSTD.Settings.TargetImageSource.Hint",
+    scope: "world",
+    config: true,
+    type: String,
+    default: TARGET_IMAGE_SOURCES.token,
+    choices: {
+      [TARGET_IMAGE_SOURCES.token]: "DSTD.Settings.TargetImageSource.Token",
+      [TARGET_IMAGE_SOURCES.portrait]: "DSTD.Settings.TargetImageSource.Portrait",
+    },
+    onChange: () => Hooks.callAll(`${MODULE_ID}.targetImageSourceChanged`),
+  });
 }
 
 export function getApplyPermissionRole() {
@@ -103,6 +123,14 @@ export function isMinionDamageAutomationEnabled() {
     return !!game.settings.get(MODULE_ID, SETTINGS.minionDamageAutomation);
   } catch (_) {
     return true;
+  }
+}
+
+export function getTargetImageSource() {
+  try {
+    return game.settings.get(MODULE_ID, SETTINGS.targetImageSource) || TARGET_IMAGE_SOURCES.token;
+  } catch (_) {
+    return TARGET_IMAGE_SOURCES.token;
   }
 }
 

@@ -35,6 +35,7 @@ https://github.com/user-attachments/assets/88f1906f-5ebe-4804-b5f4-a8c2aef774d0
 - Applies power roll status effects and normal Draw Steel conditions
 - Adds typed damage icons with color, so fire, cold, psychic, holy, and the rest are easier to scan
 - Shift+Click damage buttons to apply half damage, rounded down
+- Supports surge damage in Edit Damage for hero rolls and retainer rolls, spending surges on apply and refunding them on undo
 
 ### Undo Support
 
@@ -48,7 +49,7 @@ https://github.com/user-attachments/assets/88f1906f-5ebe-4804-b5f4-a8c2aef774d0
 
 - **Update Targets** refreshes the chat card from your currently targeted tokens
 - **Edit Roll** lets you adjust edges, banes, bonuses, and penalties per target, then updates the displayed tier result
-- **Edit Damage** lets you add extra damage or change the damage type before applying it
+- **Edit Damage** lets you add extra damage, spend surges, or change the damage type before applying it
 
 ### Reactive Tests
 
@@ -77,6 +78,7 @@ In example: If an ability target contains "Allies", Hostile tokens only target o
 - **AOE Targeting:** Automatically updates the latest matching ability card when Draw Steel places an area region. Defaults on.
 - **Override Ability Region Visibility:** Creates Draw Steel ability template regions with Always for Anyone visibility instead of Always for Observers. Defaults on.
 - **Automated Minion Damage:** Handles squad stamina caps and minion defeat automation for targeted damage. Defaults on.
+- **Target Image Source:** Choose whether target boxes show token images or actor portraits. Defaults to token images.
 
 ## Installation
 

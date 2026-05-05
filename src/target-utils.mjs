@@ -118,6 +118,9 @@ export function normalizeTargetToken(token) {
   const actor = token?.actor ?? document?.actor;
   if (!document?.uuid || !actor) return null;
 
+  const tokenImg = document.texture?.src ?? null;
+  const actorImg = actor.img ?? null;
+
   return {
     tokenUuid: document.uuid,
     tokenId: document.id ?? null,
@@ -125,7 +128,9 @@ export function normalizeTargetToken(token) {
     actorUuid: actor.uuid,
     actorId: actor.id ?? null,
     name: token?.name ?? document.name ?? actor.name,
-    img: document.texture?.src ?? actor.img ?? "icons/svg/mystery-man.svg",
+    tokenImg,
+    actorImg,
+    img: tokenImg ?? actorImg ?? "icons/svg/mystery-man.svg",
   };
 }
 
