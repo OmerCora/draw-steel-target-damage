@@ -26,6 +26,8 @@ export function initializeMinionAutomation() {
       if (clamped !== Number(newStamina)) foundry.utils.setProperty(changes, "system.staminaValue", clamped);
     }
 
+    inferDirectMinionDamageTarget(group, changes, options);
+
     applyAreaDamageCap(group, changes, options.dstd ?? {});
   });
 
@@ -179,6 +181,37 @@ function applyAreaDamageCap(group, changes, context) {
   if (Number(newStamina) < minAllowedStamina) {
     foundry.utils.setProperty(changes, "system.staminaValue", minAllowedStamina);
   }
+}
+
+function inferDirectMinionDamageTarget(group, changes, options) {
+  if (options.dstd?.primaryTargetId || options.dstd?.minionDeathTargetIds?.length) return;
+
+  const newStamina = foundry.utils.getProperty(changes, "system.staminaValue");
+  const oldStamina = Number(group.system?.staminaValue ?? 0);
+  if (newStamina === undefined || Number(newStamina) >= oldStamina) return;
+
+  const tokenDocument = getHudOrSelectedMinionToken(group);
+  if (!tokenDocument) return;
+
+  options.dstd ??= {};
+  options.dstd.primaryTargetId = tokenDocument.id;
+  options.dstd.minionDeathTargetIds = uniqueValues([tokenDocument.id]);
+}
+
+function getHudOrSelectedMinionToken(group) {
+  const hudToken = globalThis.canvas?.tokens?.hud?.object ?? globalThis.canvas?.hud?.token?.object ?? null;
+  const hudTokenDocument = hudToken?.document ?? hudToken ?? null;
+  if (isGroupMinionToken(group, hudTokenDocument)) return hudTokenDocument;
+
+  const selectedMinionTokens = Array.from(globalThis.canvas?.tokens?.controlled ?? [])
+    .map(token => token.document)
+    .filter(tokenDocument => isGroupMinionToken(group, tokenDocument));
+  return selectedMinionTokens.length === 1 ? selectedMinionTokens[0] : null;
+}
+
+function isGroupMinionToken(group, tokenDocument) {
+  if (!tokenDocument?.id) return false;
+  return getMinionMembers(group).some(member => member.tokenId === tokenDocument.id);
 }
 
 function capAreaDamageToTarget(squadGroup, tokenDocument, damage, isAreaAbility) {

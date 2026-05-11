@@ -1548,12 +1548,13 @@ function buildStatusActionsForPart(part, tier, message = null) {
   const ability = safeFromUuidSync(getPartAbilityUuid(part)) ?? (message ? getAbilityItem(message) : null);
   if (!ability) return [];
   const partId = getPartId(part) ?? `tier${Number(tier)}-synthetic`;
-  const useTier = Number(tier ?? part?.tier);
+  const useTier = normalizePowerTier(tier ?? part?.tier);
+  if (!useTier) return [];
   const actions = [];
 
   for (const powerEffect of ability.system?.power?.effects ?? []) {
     if (powerEffect.type !== "applied") continue;
-    const buttons = powerEffect.constructButtons?.(useTier) ?? [];
+    const buttons = constructPowerEffectButtons(powerEffect, useTier);
     for (const button of buttons) {
       const effectId = button.dataset.effectId;
       if (!effectId) continue;
@@ -1570,6 +1571,20 @@ function buildStatusActionsForPart(part, tier, message = null) {
     }
   }
   return actions;
+}
+
+function normalizePowerTier(tier) {
+  const tierNumber = Number(tier);
+  return [1, 2, 3].includes(tierNumber) ? tierNumber : null;
+}
+
+function constructPowerEffectButtons(powerEffect, tier) {
+  try {
+    return powerEffect.constructButtons?.(tier) ?? [];
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Could not construct status buttons for ${powerEffect.name ?? powerEffect.id ?? "power effect"}`, error);
+    return [];
+  }
 }
 
 function getPartAbilityUuid(part) {
