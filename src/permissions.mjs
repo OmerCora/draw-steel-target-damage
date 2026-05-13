@@ -8,6 +8,14 @@ export function userCanApplyForMessage(user = game.user, message, state = getMes
   return userOwnsMessageSource(user, message, state);
 }
 
+export function userCanApplyForTarget(user = game.user, message, state = getMessageState(message), target = null) {
+  if (!userCanApply(user)) return false;
+  if (user?.isGM) return true;
+  if (userOwnsMessageSource(user, message, state)) return true;
+  if (!target || target.selectedToken) return false;
+  return userOwnsTarget(user, target);
+}
+
 export function userOwnsMessageSource(user = game.user, message, state = getMessageState(message)) {
   if (!user) return false;
 
@@ -33,6 +41,15 @@ function resolveSourceActor(message, state) {
 
 function resolveSourceToken(message, state) {
   return fromUuidSyncSafe(state?.sourceTokenUuid) ?? getSpeakerTokenDocument(message);
+}
+
+function userOwnsTarget(user, target) {
+  const token = fromUuidSyncSafe(target?.tokenUuid);
+  if (documentOwnedByUser(token, user)) return true;
+  if (documentOwnedByUser(token?.actor, user)) return true;
+
+  const actor = fromUuidSyncSafe(target?.actorUuid) ?? game.actors.get(target?.actorId);
+  return documentOwnedByUser(actor, user);
 }
 
 function documentOwnedByUser(document, user) {

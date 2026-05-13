@@ -25,6 +25,7 @@ https://github.com/user-attachments/assets/88f1906f-5ebe-4804-b5f4-a8c2aef774d0
 - Adds damage, healing, and status buttons for each recorded target
 - Keeps each target in its own row with the target portrait, name, roll result, tier result, and available actions
 - Collapses multi-target rows so big area attacks do not eat the whole chat log w/ quick damage buttons in collapsed rows for faster cleanup during busy combats
+- Shows the base roll result above grouped target rows, so the tier and roll breakdown stay visible while rows are collapsed
 
 ### Damage, Healing, and Status Application
 
@@ -33,6 +34,7 @@ https://github.com/user-attachments/assets/88f1906f-5ebe-4804-b5f4-a8c2aef774d0
 - Automatically defeats minions as the squad stamina pool crosses thresholds, with area abilities capped to the targeted minions and each area application limited to one minion's stamina
 - Supports healing and temporary stamina from Draw Steel healing rolls
 - Applies power roll status effects and normal Draw Steel conditions
+- Shows target characteristic values on potency status buttons, such as `Apply Dazed and Slowed (I = 2)`
 - Adds typed damage icons with color, so fire, cold, psychic, holy, and the rest are easier to scan
 - Shift+Click damage buttons to apply half damage, rounded down
 - Supports surge damage in Edit Damage for hero rolls and retainer rolls, spending surges on apply and refunding them on undo
@@ -69,11 +71,12 @@ In example: If an ability target contains "Allies", Hostile tokens only target o
 ### Permissions
 
 - The Director can always apply and undo target controls
-- The `Apply Damage/Status Condition Permission` setting controls the minimum role allowed to use apply and undo buttons. (Players can only click the ability rolls they own)
+- The `Apply Damage/Status Condition Permission` setting controls the minimum role allowed to use apply and undo buttons
+- Non-Director users can use controls for rolls whose source actor or token they own, plus controls for target boxes connected to tokens they own
 
 ## Settings
 
-- **Apply Damage/Status Condition Permission:** Minimum role allowed to apply or undo damage and status buttons. Defaults to Director. Non-Director users are still limited to source actors or tokens they own.
+- **Apply Damage/Status Condition Permission:** Minimum role allowed to apply or undo damage and status buttons. Defaults to Director. Non-Director users are limited to source actors or tokens they own, or target boxes connected to tokens they own.
 - **Hide System Roll & Damage Buttons:** Hides the system's duplicate controls on managed chat cards. Defaults on.
 - **AOE Targeting:** Automatically updates the latest matching ability card when Draw Steel places an area region. Defaults on.
 - **Override Ability Region Visibility:** Creates Draw Steel ability template regions with Always for Anyone visibility instead of Always for Observers. Defaults on.

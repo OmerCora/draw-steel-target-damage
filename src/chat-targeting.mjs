@@ -2,7 +2,7 @@ import { FLAG_STATE, localize, MODULE_ID } from "./config.mjs";
 import { isAreaAbility } from "./minion-automation.mjs";
 import { executeMutation } from "./socket.mjs";
 import { extractReactiveRollResult } from "./operations.mjs";
-import { userCanApplyForMessage } from "./permissions.mjs";
+import { userCanApplyForMessage, userCanApplyForTarget } from "./permissions.mjs";
 import { getTargetImageSource, TARGET_IMAGE_SOURCES } from "./settings.mjs";
 import { getMessageState, hasModuleState, mutateMessageState, setMessageState } from "./state.mjs";
 import {
@@ -48,6 +48,14 @@ const DAMAGE_TYPE_ICONS = {
   poison: "fa-solid fa-skull-crossbones",
   psychic: "fa-solid fa-brain",
   sonic: "fa-solid fa-volume-high",
+};
+
+const CHARACTERISTIC_ABBREVIATIONS = {
+  might: "M",
+  agility: "A",
+  reason: "R",
+  intuition: "I",
+  presence: "P",
 };
 
 const HIDDEN_SYSTEM_DIVIDER_CLASS = `${MODULE_ID}-hidden-system-divider`;
@@ -317,6 +325,9 @@ function renderTargetPanel(message, html, state) {
     const baseRow = createBaseResultRow(message, state, renderContext);
     if (baseRow) panel.append(baseRow);
   } else {
+    const baseRoll = !isReactive && targets.length > 1 ? createGroupedBaseRollDisplay(message, state) : null;
+    if (baseRoll) panel.append(baseRoll);
+
     const list = document.createElement("div");
     list.classList.add(`${MODULE_ID}-target-list`);
     for (const target of targets) {
@@ -399,7 +410,7 @@ function createBaseResultRow(message, state, renderContext = {}) {
 
   const damageActions = actionPart ? buildDamageActionsForPart(actionPart) : [];
   if (!damageActions.length && tier) damageActions.push(...buildDamageActionsForTier(message, tier));
-  const statusActions = buildStatusActionsForPart(actionPart ?? matched?.part, tier, message);
+  const statusActions = buildStatusActionsForPart(actionPart ?? matched?.part, tier, message, syntheticTarget);
   statusActions.push(...applyActions);
   if (!matched?.powerRoll && !damageActions.length && !statusActions.length) return null;
 
@@ -425,6 +436,17 @@ function findBaseResultPart(message) {
   return { part, powerRoll, partId: getPartId(part) };
 }
 
+function createGroupedBaseRollDisplay(message, state) {
+  const matched = findBaseResultPart(message);
+  if (!matched?.powerRoll) return null;
+
+  const wrap = document.createElement("div");
+  wrap.classList.add(`${MODULE_ID}-base-roll-summary`);
+  const tier = Number(matched.part?.tier) || Number(matched.powerRoll.product) || null;
+  wrap.append(createRollDisplay(message, state, { baseRoll: true }, matched, tier, { editable: false, ignoreOverride: true }));
+  return wrap;
+}
+
 function createTargetRow(message, state, target, renderContext = {}) {
   // Resolve the part for this specific target (so we get THIS target's tier/damage/effects).
   const matched = findTargetPart(message, target) ?? findBaseResultPart(message);
@@ -434,7 +456,7 @@ function createTargetRow(message, state, target, renderContext = {}) {
   const actionPart = tierOverride ? tierPart : (tierPart ?? matched?.part ?? null);
   const damageActions = actionPart ? buildDamageActionsForPart(actionPart) : [];
   if (!damageActions.length && tier) damageActions.push(...buildDamageActionsForTier(message, tier));
-  const statusActions = buildStatusActionsForPart(actionPart ?? matched?.part, tier, message);
+  const statusActions = buildStatusActionsForPart(actionPart ?? matched?.part, tier, message, target);
   statusActions.push(...(renderContext.applyActions ?? []));
   const targetCount = renderContext.targetCount ?? getRenderableTargets(state).length;
   const quickDamageAction = targetCount > 1 ? damageActions[0] ?? null : null;
@@ -504,7 +526,7 @@ function addQuickDamageButton(row, message, state, target, action) {
   const toggle = row.querySelector(`.${MODULE_ID}-target-toggle`);
   if (!head || !toggle) return;
 
-  const canApply = userCanApplyForMessage(game.user, message, state);
+  const canApply = userCanApplyForTargetAction(game.user, message, state, target);
   const operationId = makeOperationId("damage", target, action);
   const record = state.applications?.[operationId];
   const damageType = getEffectiveDamageType(state, target, action);
@@ -590,12 +612,12 @@ function createNoActionsElement() {
 /* Per-target ability roll display                              */
 /* ============================================================ */
 
-function createRollDisplay(message, state, target, matched, tier) {
+function createRollDisplay(message, state, target, matched, tier, { editable = true, ignoreOverride = false } = {}) {
   const wrap = document.createElement("div");
   wrap.classList.add(`${MODULE_ID}-roll-display`);
 
   const powerRoll = matched.powerRoll;
-  const override = state.tierOverrides?.[getTargetKey(target)];
+  const override = ignoreOverride ? null : state.tierOverrides?.[getTargetKey(target)];
   const summary = computePowerRollSummary(powerRoll, override);
   const effectiveTier = override?.tier ?? tier ?? summary.tier;
   if (summary.isCritical) wrap.classList.add("is-critical");
@@ -624,14 +646,14 @@ function createRollDisplay(message, state, target, matched, tier) {
   total.textContent = String(summary.total ?? "");
   box.append(formula, total);
 
-  const editRollBtn = createIconButton({
+  const editRollBtn = editable ? createIconButton({
     icon: "fa-solid fa-gear",
     action: "editRoll",
     tooltip: localize("Chat.EditRoll"),
     classes: [`${MODULE_ID}-cog-button`],
     extraDataset: { target: JSON.stringify(target) },
     iconOnly: true,
-  });
+  }) : null;
 
   const tooltip = formatRollBreakdownTooltip(powerRoll, summary);
   if (tooltip) {
@@ -658,7 +680,8 @@ function createRollDisplay(message, state, target, matched, tier) {
   hydrateTierDescription(message, effectiveTier, tierText);
   wrap.append(tierResult);
 
-  rollLine.append(box, editRollBtn);
+  rollLine.append(box);
+  if (editRollBtn) rollLine.append(editRollBtn);
   wrap.append(rollLine);
 
   return wrap;
@@ -767,7 +790,7 @@ function createReactiveTargetRow(message, state, target) {
 function createDamageActionRow(message, state, target, action) {
   const operationId = makeOperationId("damage", target, action);
   const record = state.applications?.[operationId];
-  const canApply = userCanApplyForMessage(game.user, message, state);
+  const canApply = userCanApplyForTargetAction(game.user, message, state, target);
   const isSelectedTokenStack = !!target?.selectedToken;
   const stackCount = getApplicationStackCount(record);
   const isApplied = !isSelectedTokenStack && record?.status === "applied";
@@ -833,7 +856,7 @@ function createDamageActionRow(message, state, target, action) {
 function createStatusActionRow(message, state, target, action) {
   const operationId = makeOperationId("status", target, action);
   const record = state.applications?.[operationId];
-  const canApply = userCanApplyForMessage(game.user, message, state);
+  const canApply = userCanApplyForTargetAction(game.user, message, state, target);
   const isSelectedTokenStack = !!target?.selectedToken;
   const stackCount = getApplicationStackCount(record);
   const isApplied = !isSelectedTokenStack && record?.status === "applied";
@@ -845,10 +868,12 @@ function createStatusActionRow(message, state, target, action) {
   if (isUndone) row.classList.add("is-undone");
   if (isSelectedTokenStack && stackCount) row.classList.add("has-stack");
 
+  const actionLabel = formatStatusActionLabel(action, target);
+
   const applyButton = createActionButton({
     icon: action.icon,
     iconImg: action.iconImg,
-    label: isApplied ? `${localize("Chat.Applied")}: ${action.label}` : localize("Chat.ApplyStatus", { name: action.label }),
+    label: isApplied ? `${localize("Chat.Applied")}: ${actionLabel}` : localize("Chat.ApplyStatus", { name: actionLabel }),
     action: "applyStatus",
     target,
     operationId,
@@ -880,6 +905,31 @@ function createStatusActionRow(message, state, target, action) {
 
   row.append(applyButton, undoButton);
   return row;
+}
+
+function userCanApplyForTargetAction(user, message, state, target) {
+  if (target?.selectedToken) return userCanApplyForMessage(user, message, state);
+  return userCanApplyForTarget(user, message, state, target);
+}
+
+function userCanApplyForActionPayload(user, message, state, payload) {
+  if (payload.selectedTokenStack) return userCanApplyForMessage(user, message, state);
+  const targets = (payload.targets?.length ? payload.targets : [payload.target]).filter(target => target?.tokenUuid || target?.actorUuid);
+  if (!targets.length) return userCanApplyForMessage(user, message, state);
+  return targets.every(target => userCanApplyForTargetAction(user, message, state, target));
+}
+
+function formatStatusActionLabel(action, target) {
+  const potencyLabel = getTargetPotencyLabel(action, target);
+  return potencyLabel ? `${action.label} (${potencyLabel})` : action.label;
+}
+
+function getTargetPotencyLabel(action, target) {
+  const characteristic = normalizeCharacteristic(action?.potencyCharacteristic);
+  if (!characteristic) return "";
+  const value = getTargetCharacteristicValue(target, characteristic);
+  if (value == null) return "";
+  return `${CHARACTERISTIC_ABBREVIATIONS[characteristic] ?? characteristic}: ${value}`;
 }
 
 function getApplicationStackCount(record) {
@@ -1091,13 +1141,14 @@ async function handlePanelClick(event, message) {
       return;
     }
 
+    const payload = buildPayloadFromButton(button, message, event);
+    const state = getEffectiveMessageState(message);
     if (["applyDamage", "undoDamage", "applyStatus", "undoStatus"].includes(action)
-      && !userCanApplyForMessage(game.user, message, getEffectiveMessageState(message))) {
+      && !userCanApplyForActionPayload(game.user, message, state, payload)) {
       ui.notifications.warn(localize("Notify.NoPermission"));
       return;
     }
 
-    const payload = buildPayloadFromButton(button, message, event);
     let result;
 
     switch (action) {
@@ -1544,7 +1595,7 @@ function buildDamageActionsForPart(part) {
   return actions;
 }
 
-function buildStatusActionsForPart(part, tier, message = null) {
+function buildStatusActionsForPart(part, tier, message = null, target = null) {
   const ability = safeFromUuidSync(getPartAbilityUuid(part)) ?? (message ? getAbilityItem(message) : null);
   if (!ability) return [];
   const partId = getPartId(part) ?? `tier${Number(tier)}-synthetic`;
@@ -1559,6 +1610,7 @@ function buildStatusActionsForPart(part, tier, message = null) {
       const effectId = button.dataset.effectId;
       if (!effectId) continue;
       const { iconImg, iconClass } = resolveStatusIcon(powerEffect, effectId, button);
+      const potencyCharacteristic = getAppliedPotencyCharacteristic(powerEffect, useTier, target);
       actions.push({
         partId,
         tier: useTier,
@@ -1567,10 +1619,56 @@ function buildStatusActionsForPart(part, tier, message = null) {
         label: button.textContent.trim() || effectId,
         icon: iconClass,
         iconImg,
+        potencyCharacteristic,
       });
     }
   }
   return actions;
+}
+
+function getAppliedPotencyCharacteristic(powerEffect, tier, target) {
+  if (!target) return null;
+  const display = getAppliedTierDisplay(powerEffect, tier);
+  if (!/{{\s*potency\s*}}/i.test(display)) return null;
+  return getAppliedTierPotencyCharacteristic(powerEffect, tier);
+}
+
+function getAppliedTierDisplay(powerEffect, tier) {
+  for (let index = Number(tier); index >= 1; index--) {
+    const display = String(powerEffect.applied?.[`tier${index}`]?.display ?? "").trim();
+    if (display) return display;
+  }
+  return "";
+}
+
+function getAppliedTierPotencyCharacteristic(powerEffect, tier) {
+  for (let index = Number(tier); index >= 1; index--) {
+    const characteristic = normalizeCharacteristic(powerEffect.applied?.[`tier${index}`]?.potency?.characteristic);
+    if (characteristic) return characteristic;
+  }
+  return null;
+}
+
+function normalizeCharacteristic(characteristic) {
+  const key = String(characteristic ?? "").trim().toLowerCase();
+  return CHARACTERISTIC_ABBREVIATIONS[key] ? key : null;
+}
+
+function getTargetCharacteristicValue(target, characteristic) {
+  const actor = getTargetActorSync(target);
+  const abbreviation = CHARACTERISTIC_ABBREVIATIONS[characteristic];
+  const raw = actor?.system?.characteristics?.[characteristic]?.value
+    ?? actor?.getRollData?.()?.characteristics?.[characteristic]?.value
+    ?? actor?.getRollData?.()?.[abbreviation]
+    ?? null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+function getTargetActorSync(target) {
+  const tokenDocument = safeFromUuidSync(target?.tokenUuid);
+  if (tokenDocument?.actor) return tokenDocument.actor;
+  return safeFromUuidSync(target?.actorUuid) ?? game.actors.get(target?.actorId) ?? null;
 }
 
 function normalizePowerTier(tier) {

@@ -7,14 +7,13 @@ import {
   isAreaAbility,
   restoreChangedMinionStates,
 } from "./minion-automation.mjs";
-import { userCanApplyForMessage } from "./permissions.mjs";
+import { userCanApplyForMessage, userCanApplyForTarget } from "./permissions.mjs";
 import { getMessageAuthorId, getPart, resolveTarget } from "./target-utils.mjs";
 import { getMessageState, mutateMessageState } from "./state.mjs";
 
 export async function applyDamageOperation(payload, context) {
   const { message, roll } = getRollContext(payload, { allowSynthetic: !!payload.syntheticDamage });
   const state = getMessageState(message);
-  assertCanApplyForMessage(context.user, message, state);
 
   const override = payload.damageOverride ?? null;
   const synthetic = payload.syntheticDamage ?? null;
@@ -27,6 +26,7 @@ export async function applyDamageOperation(payload, context) {
 
   const amount = payload.halfDamage ? Math.floor(baseAmount / 2) : baseAmount;
   const applicationTargets = getApplicationTargets(payload);
+  assertCanApplyForTargets(context.user, message, state, applicationTargets, payload);
   const operationTargets = areaAbility ? getContextTargets(payload, applicationTargets) : applicationTargets;
   const surgeSpend = await prepareSurgeSpend(message, state, override, isHeal, applicationTargets.length);
   const records = [];
@@ -76,10 +76,10 @@ export async function applyDamageOperation(payload, context) {
 export async function undoDamageOperation(payload, context) {
   const message = getMessageOrThrow(payload.messageId);
   const state = getMessageState(message);
-  assertCanApplyForMessage(context.user, message, state);
   const entry = state.applications?.[payload.operationId];
   const prior = getLatestAppliedRecord(entry);
   if (!prior) throw new Error("No applied damage record was found");
+  assertCanApplyForTargets(context.user, message, state, getRecordTargets(prior), payload);
 
   const record = Array.isArray(prior.records)
     ? await undoDamageBatch(prior, context.user)
@@ -184,10 +184,10 @@ async function undoDamageBatch(prior, user) {
 export async function applyStatusOperation(payload, context) {
   const message = getMessageOrThrow(payload.messageId);
   const state = getMessageState(message);
-  assertCanApplyForMessage(context.user, message, state);
   const powerEffect = payload.effectUuid ? await fromUuid(payload.effectUuid) : null;
   const statusName = getStatusName(powerEffect, payload.effectId);
   const applicationTargets = getApplicationTargets(payload);
+  assertCanApplyForTargets(context.user, message, state, applicationTargets, payload);
   const records = [];
 
   for (const target of applicationTargets) {
@@ -209,10 +209,10 @@ export async function applyStatusOperation(payload, context) {
 export async function undoStatusOperation(payload, context) {
   const message = getMessageOrThrow(payload.messageId);
   const state = getMessageState(message);
-  assertCanApplyForMessage(context.user, message, state);
   const entry = state.applications?.[payload.operationId];
   const prior = getLatestAppliedRecord(entry);
   if (!prior) throw new Error("No applied status record was found");
+  assertCanApplyForTargets(context.user, message, state, getRecordTargets(prior), payload);
 
   const record = Array.isArray(prior.records)
     ? await undoStatusBatch(prior, context.user)
@@ -642,6 +642,19 @@ async function resolveTargetOrThrow(target) {
 
 function assertCanApplyForMessage(user, message, state = getMessageState(message)) {
   if (!userCanApplyForMessage(user, message, state)) throw new Error(localize("Notify.NoPermission"));
+}
+
+function assertCanApplyForTargets(user, message, state, targets = [], payload = {}) {
+  if (payload.selectedTokenStack) return assertCanApplyForMessage(user, message, state);
+  const validTargets = targets.filter(target => target?.tokenUuid || target?.actorUuid);
+  if (!validTargets.length) return assertCanApplyForMessage(user, message, state);
+  if (!validTargets.every(target => userCanApplyForTarget(user, message, state, target))) {
+    throw new Error(localize("Notify.NoPermission"));
+  }
+}
+
+function getRecordTargets(record) {
+  return Array.isArray(record?.records) ? record.records.map(entry => entry.target) : [record?.target];
 }
 
 function canUserRollActor(user, actor) {

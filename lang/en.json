@@ -1,6 +1,6 @@
 {
   "DSTD.Settings.ApplyPermission.Name": "Apply Damage/Status Condition Permission",
-  "DSTD.Settings.ApplyPermission.Hint": "Minimum user role allowed to apply or undo target-aware damage and status buttons. Non-Director users can only use buttons from messages whose source actor or token they own.",
+  "DSTD.Settings.ApplyPermission.Hint": "Minimum user role allowed to apply or undo target-aware damage and status buttons. Non-Director users can use buttons from messages whose source actor or token they own, or buttons for target boxes connected to tokens they own.",
   "DSTD.Settings.HideSystemButtons.Name": "Hide System Roll & Damage Buttons",
   "DSTD.Settings.HideSystemButtons.Hint": "When enabled, hides the Draw Steel system's built-in chat damage/effect buttons and roll details so only the per-target panel from this module is shown.",
   "DSTD.Settings.AoeTargeting.Name": "AOE Targeting",

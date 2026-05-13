@@ -76,6 +76,13 @@
   gap: 6px;
 }
 
+.draw-steel-target-damage-base-roll-summary {
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 4px;
+  background: rgba(128, 128, 128, 0.06);
+}
+
 .draw-steel-target-damage-target-row {
   display: flex;
   flex-direction: column;
